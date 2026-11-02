@@ -1,0 +1,98 @@
+[gd_scene format=3 uid="uid://cse4nr3olb6h"]
+
+[ext_resource type="Theme" uid="uid://0102bgtho37i" path="res://ui/theme/game_theme.tres" id="1_6ogyk"]
+
+[node name="UserInterface" type="Control" unique_id=720449452]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("1_6ogyk")
+
+[node name="ColorRect" type="ColorRect" parent="." unique_id=854888244]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.043137256, 0.047058824, 0.050980393, 1)
+
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=463222318]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 32
+theme_override_constants/margin_top = 32
+theme_override_constants/margin_right = 32
+theme_override_constants/margin_bottom = 32
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer" unique_id=607994635]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer" unique_id=1411853178]
+layout_mode = 2
+theme_type_variation = &"LabelAmber"
+
+[node name="HSeparator" type="HSeparator" parent="MarginContainer/VBoxContainer" unique_id=2111091769]
+layout_mode = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=1423219437]
+layout_mode = 2
+
+[node name="Button" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer" unique_id=2012829435]
+layout_mode = 2
+text = "Default"
+
+[node name="Button2" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer" unique_id=1130747793]
+layout_mode = 2
+theme_type_variation = &"ButtonPrimary"
+text = "Confirm"
+
+[node name="Button3" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer" unique_id=1586115439]
+layout_mode = 2
+theme_type_variation = &"ButtonDanger"
+text = "Abandon"
+
+[node name="Button4" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer" unique_id=1612188595]
+layout_mode = 2
+disabled = true
+text = "Disabled"
+
+[node name="Label2" type="Label" parent="MarginContainer/VBoxContainer" unique_id=593038438]
+layout_mode = 2
+theme_type_variation = &"LabelAmber"
+
+[node name="HSeparator2" type="HSeparator" parent="MarginContainer/VBoxContainer" unique_id=983602842]
+layout_mode = 2
+
+[node name="HBoxContainer2" type="HBoxContainer" parent="MarginContainer/VBoxContainer" unique_id=947205875]
+layout_mode = 2
+
+[node name="PanelContainer" type="PanelContainer" parent="MarginContainer/VBoxContainer/HBoxContainer2" unique_id=1028951837]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer/HBoxContainer2/PanelContainer" unique_id=1149874140]
+layout_mode = 2
+
+[node name="PanelContainer2" type="PanelContainer" parent="MarginContainer/VBoxContainer/HBoxContainer2" unique_id=1526243520]
+layout_mode = 2
+theme_type_variation = &"HUDPanel"
+
+[node name="PanelContainer3" type="PanelContainer" parent="MarginContainer/VBoxContainer/HBoxContainer2" unique_id=1379552674]
+layout_mode = 2
+theme_type_variation = &"AmberPanel"
+
+[node name="PanelContainer4" type="PanelContainer" parent="MarginContainer/VBoxContainer/HBoxContainer2" unique_id=3705716]
+layout_mode = 2
+theme_type_variation = &"DangerPanel"
+
+[node name="ProgressBar" type="ProgressBar" parent="MarginContainer" unique_id=1925904277]
+layout_mode = 2
+value = 70.0
+show_percentage = false

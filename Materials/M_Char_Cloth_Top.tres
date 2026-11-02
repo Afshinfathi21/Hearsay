@@ -1,0 +1,15 @@
+[gd_resource type="ORMMaterial3D" format=3]
+
+[ext_resource type="Texture2D" path="res://Materials/Textures/fabric_albedo.png" id="1_ur3td"]
+[ext_resource type="Texture2D" path="res://Materials/Textures/fabric_normal.png" id="2_v6vov"]
+[ext_resource type="Texture2D" path="res://Materials/Textures/fabric_orm.png" id="3_tnmcm"]
+
+[resource]
+resource_name = "M_Char_Cloth_Top"
+albedo_color = Color(0.65882355, 0.47058824, 0.12156863, 1)
+albedo_texture = ExtResource("1_ur3td")
+orm_texture = ExtResource("3_tnmcm")
+normal_enabled = true
+normal_texture = ExtResource("2_v6vov")
+ao_enabled = true
+uv1_scale = Vector3(20, 20, 1)

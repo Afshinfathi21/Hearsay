@@ -1,0 +1,37 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/hud/player_list_entry.gd" id="1_entry"]
+
+[node name="PlayerListEntry" type="HBoxContainer"]
+custom_minimum_size = Vector2(300, 0)
+mouse_filter = 2
+script = ExtResource("1_entry")
+
+[node name="StatusMark" type="ColorRect" parent="."]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(4, 20)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(0.94, 0.63, 0.19, 1)
+
+[node name="NameLabel" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "PLAYER"
+clip_text = true
+
+[node name="RoomLabel" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelCaption"
+text = "03"
+
+[node name="PointsLabel" type="Label" parent="."]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(36, 0)
+layout_mode = 2
+theme_type_variation = &"LabelMono"
+text = "10"
+horizontal_alignment = 2

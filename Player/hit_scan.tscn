@@ -1,0 +1,29 @@
+[gd_scene format=3 uid="uid://do6gno8dwxey"]
+
+[ext_resource type="Script" uid="uid://b4ymfw2yaq1ro" path="res://Player/hitscan.gd" id="1_xwaxv"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_2gebv"]
+font_size = 24
+
+[node name="HitScan" type="Node3D" unique_id=1316052872]
+script = ExtResource("1_xwaxv")
+
+[node name="RayCast3D" type="RayCast3D" parent="." unique_id=946714444]
+target_position = Vector3(0, 0, -3)
+
+[node name="CenterContainer" type="CenterContainer" parent="RayCast3D" unique_id=51255473]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -20.0
+offset_top = -20.0
+offset_right = 20.0
+offset_bottom = 20.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Label" type="Label" parent="RayCast3D/CenterContainer" unique_id=345049772]
+layout_mode = 2
+label_settings = SubResource("LabelSettings_2gebv")

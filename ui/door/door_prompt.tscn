@@ -1,0 +1,70 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/hud/door_prompt.gd" id="1_prompt"]
+
+[node name="DoorPrompt" type="PanelContainer"]
+custom_minimum_size = Vector2(320, 0)
+mouse_filter = 2
+theme_type_variation = &"HUDPanel"
+script = ExtResource("1_prompt")
+
+[node name="VBox" type="VBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="Top" type="HBoxContainer" parent="VBox"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="KeyBox" type="Panel" parent="VBox/Top"]
+custom_minimum_size = Vector2(36, 36)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+
+[node name="KeyLabel" type="Label" parent="VBox/Top/KeyBox"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_type_variation = &"LabelAmber"
+text = "E"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ActionLabel" type="Label" parent="VBox/Top"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_type_variation = &"LabelTitle"
+text = "PASS THROUGH"
+
+[node name="HSeparator" type="HSeparator" parent="VBox"]
+layout_mode = 2
+
+[node name="Info" type="HBoxContainer" parent="VBox"]
+layout_mode = 2
+
+[node name="CostLabel" type="Label" parent="VBox/Info"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"LabelMono"
+text = "COST  03 PTS"
+
+[node name="CapacityLabel" type="Label" parent="VBox/Info"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelMono"
+text = "PLACES  02 / 02"
+horizontal_alignment = 2
+
+[node name="StatusLabel" type="Label" parent="VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelCaption"
+theme_override_font_sizes/font_size = 14
+text = "YOU WILL HAVE 7 POINTS LEFT"

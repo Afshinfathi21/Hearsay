@@ -1,0 +1,79 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Theme" path="res://ui/theme/game_theme.tres" id="1_theme"]
+[ext_resource type="Script" path="res://ui/hud/game_hud.gd" id="2_hud"]
+[ext_resource type="PackedScene" path="res://ui/hud/round_info.tscn" id="3_round"]
+[ext_resource type="PackedScene" path="res://ui/hud/player_list.tscn" id="4_list"]
+[ext_resource type="PackedScene" path="res://ui/hud/local_player_panel.tscn" id="5_local"]
+[ext_resource type="PackedScene" path="res://ui/hud/door_prompt.tscn" id="6_prompt"]
+
+[node name="GameHUD" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("1_theme")
+script = ExtResource("2_hud")
+
+[node name="Safe" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 32
+theme_override_constants/margin_top = 32
+theme_override_constants/margin_right = 32
+theme_override_constants/margin_bottom = 32
+
+[node name="Layout" type="Control" parent="Safe"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="RoundInfo" parent="Safe/Layout" instance=ExtResource("3_round")]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -130.0
+offset_right = 130.0
+grow_horizontal = 2
+
+[node name="PlayerList" parent="Safe/Layout" instance=ExtResource("4_list")]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -320.0
+grow_horizontal = 0
+
+[node name="LocalPlayerPanel" parent="Safe/Layout" instance=ExtResource("5_local")]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_right = 300.0
+grow_vertical = 0
+
+[node name="DoorPrompt" parent="Safe/Layout" instance=ExtResource("6_prompt")]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -160.0
+offset_top = 90.0
+offset_right = 160.0
+offset_bottom = 90.0
+grow_horizontal = 2
+grow_vertical = 1

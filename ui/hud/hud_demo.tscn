@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" uid="uid://c7y20mwyei1fg" path="res://ui/hud/hud_demo.gd" id="1_demo"]
+[ext_resource type="PackedScene" path="res://ui/hud/game_hud.tscn" id="2_hud"]
+
+[node name="HudDemo" type="Node"]
+script = ExtResource("1_demo")
+hud = NodePath("GameHUD")
+
+[node name="Background" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.17, 0.19, 0.21, 1)
+
+[node name="GameHUD" parent="." instance=ExtResource("2_hud")]

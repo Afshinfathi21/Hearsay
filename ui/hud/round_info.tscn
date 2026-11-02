@@ -1,0 +1,45 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/hud/round_info.gd" id="1_round"]
+
+[node name="RoundInfo" type="PanelContainer"]
+custom_minimum_size = Vector2(260, 0)
+mouse_filter = 2
+theme_type_variation = &"HUDPanel"
+script = ExtResource("1_round")
+
+[node name="VBox" type="VBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="RoundLabel" type="Label" parent="VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelTitle"
+text = "ROUND 01"
+horizontal_alignment = 1
+
+[node name="PhaseLabel" type="Label" parent="VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelAmber"
+text = "DECISION"
+horizontal_alignment = 1
+
+[node name="TimerBox" type="VBoxContainer" parent="VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="TimeLabel" type="Label" parent="VBox/TimerBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelMono"
+text = "00:30"
+horizontal_alignment = 1
+
+[node name="TimerBar" type="ProgressBar" parent="VBox/TimerBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 4)
+layout_mode = 2
+max_value = 30.0
+value = 30.0
+show_percentage = false

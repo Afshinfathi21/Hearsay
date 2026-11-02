@@ -1,0 +1,82 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/hud/local_player_panel.gd" id="1_panel"]
+
+[node name="LocalPlayerPanel" type="PanelContainer"]
+custom_minimum_size = Vector2(300, 0)
+mouse_filter = 2
+theme_type_variation = &"HUDPanel"
+script = ExtResource("1_panel")
+
+[node name="VBox" type="VBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="Header" type="HBoxContainer" parent="VBox"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Avatar" type="Panel" parent="VBox/Header"]
+custom_minimum_size = Vector2(44, 44)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+
+[node name="InitialLabel" type="Label" parent="VBox/Header/Avatar"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_type_variation = &"LabelTitle"
+text = "K"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Info" type="VBoxContainer" parent="VBox/Header"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 0
+
+[node name="NameLabel" type="Label" parent="VBox/Header/Info"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "PLAYER NAME"
+
+[node name="StatusLabel" type="Label" parent="VBox/Header/Info"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelCaption"
+text = "ALIVE"
+
+[node name="CaptionLabel" type="Label" parent="VBox"]
+layout_mode = 2
+theme_type_variation = &"LabelCaption"
+text = "POINTS"
+
+[node name="PointsRow" type="HBoxContainer" parent="VBox"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="PointsLabel" type="Label" parent="VBox/PointsRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelNumber"
+theme_override_font_sizes/font_size = 64
+text = "10"
+
+[node name="DeltaLabel" type="Label" parent="VBox/PointsRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"LabelAmber"
+text = "+2"
+
+[node name="PointsBar" type="ProgressBar" parent="VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 6)
+layout_mode = 2
+max_value = 10.0
+value = 10.0
+show_percentage = false

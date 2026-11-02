@@ -1,0 +1,49 @@
+[gd_scene format=3 uid="uid://bu1surqhya0ql"]
+
+[ext_resource type="Script" uid="uid://bm3vun5xcfjwg" path="res://Player/player.gd" id="1_l8h54"]
+[ext_resource type="Script" uid="uid://dp53dvfdbioyc" path="res://Player/control.gd" id="2_4ntmi"]
+[ext_resource type="PackedScene" uid="uid://do6gno8dwxey" path="res://Player/hit_scan.tscn" id="4_gwnis"]
+[ext_resource type="PackedScene" uid="uid://dxp4mu2ocgn3x" path="res://Assets/Characters/character_base.glb" id="5_k53q1"]
+[ext_resource type="Script" uid="uid://bhuvp4s8thd54" path="res://Player/character_animator.gd" id="6_fhl08"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_xbe3j"]
+radius = 0.42
+height = 1.88
+
+[node name="Player" type="CharacterBody3D" unique_id=37787]
+script = ExtResource("1_l8h54")
+camera_distance = 2.5
+camera_pivot_height = 1.5
+camera_shoulder_offset = 0.0
+start_pitch_deg = -20.0
+pitch_min_deg = -60.0
+
+[node name="CenterContainer" type="CenterContainer" parent="." unique_id=1837272254]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Control" type="Control" parent="CenterContainer" unique_id=1555392997]
+layout_mode = 2
+script = ExtResource("2_4ntmi")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=464512170]
+shape = SubResource("CapsuleShape3D_xbe3j")
+
+[node name="Head" type="Node3D" parent="." unique_id=514397394]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.49702603, -0.14457113)
+
+[node name="Camera3D" type="Camera3D" parent="Head" unique_id=435616078]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.26937306, -0.018526435)
+
+[node name="HitScan" parent="Head/Camera3D" unique_id=1316052872 instance=ExtResource("4_gwnis")]
+
+[node name="SpringArm3D" type="SpringArm3D" parent="Head" unique_id=87305838]
+
+[node name="character_base" parent="." unique_id=468836977 instance=ExtResource("5_k53q1")]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, -0.88, 0)
+
+[node name="Animator" type="Node" parent="." unique_id=1275786890]
+script = ExtResource("6_fhl08")

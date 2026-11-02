@@ -1,0 +1,13 @@
+[gd_resource type="ORMMaterial3D" format=3]
+
+[ext_resource type="Texture2D" path="res://Materials/Textures/concrete_painted_albedo.png" id="1_677on"]
+[ext_resource type="Texture2D" path="res://Materials/Textures/concrete_painted_normal.png" id="2_josnn"]
+[ext_resource type="Texture2D" path="res://Materials/Textures/concrete_painted_orm.png" id="3_1ok0k"]
+
+[resource]
+resource_name = "M_Concrete_Painted"
+albedo_texture = ExtResource("1_677on")
+orm_texture = ExtResource("3_1ok0k")
+normal_enabled = true
+normal_texture = ExtResource("2_josnn")
+ao_enabled = true
