@@ -1,16 +1,6 @@
 extends Node
-## TEMPORARY stand-in for your host logic, so you can play the building alone with the new UI.
-## The rules here are PLACEHOLDERS (they are not your game design):
-##   * opening a door costs `door_cost` points and takes one of its `door_capacity` places;
-##     a full door locks (red); if you cannot pay, the door closes again
-##   * walking into a room with a penalty applies it once (lose points / lockdown notice)
-##   * reaching 0 points eliminates you; walking out of the exit wins
-## In the real game this logic lives on the HOST, and the UI calls stay exactly the same.
-##
-## Add it as a child of the level and fill in the three slots.
 
 @export var hud: GameHUD
-## The building generator node (building_generator.gd).
 @export var generator: Node3D
 @export var player: Node3D
 @export var starting_points := 10
@@ -21,20 +11,18 @@ var _points := 0
 var _eliminated := false
 var _finished := false
 var _room_label := ""
-var _penalised := {}               # room label -> true
-var _reserved := {}                # door record -> places taken
+var _penalised := {}
 var _doors_opened := 0
 var _points_spent := 0
 var _start_msec := 0
+var _pending_door: StandardDoor
 
 
 func _ready() -> void:
 	_points = starting_points
 	_start_msec = Time.get_ticks_msec()
-	await get_tree().process_frame     # let the generator finish building the doors
+	await get_tree().process_frame
 
-	# The Generator slot must hold the node that has building_generator.gd (your level root).
-	# If it holds something else, look for the right node.
 	if generator == null or not ("door_records" in generator):
 		generator = _find_generator()
 	if generator == null:
@@ -46,27 +34,47 @@ func _ready() -> void:
 			continue
 		rec.door.cost = door_cost
 		generator.set_door_state(rec, door_capacity, 0)
-		rec.door.opened.connect(_on_door_opened.bind(rec))
+		rec.door.interaction_requested.connect(_on_door_interaction_requested)
+		rec.door.passage_completed.connect(_on_door_passage_completed.bind(rec.door))
+		rec.door.passage_cancelled.connect(_on_door_passage_cancelled.bind(rec.door))
 	generator.room_entered.connect(_on_room_entered)
 	generator.exit_reached.connect(_on_exit_reached)
 	hud.victory_continue.connect(func() -> void: get_tree().reload_current_scene())
 	_push_state()
 
 
-func _on_door_opened(rec) -> void:
-	if _eliminated or _finished:
+func _on_door_interaction_requested(door: StandardDoor, body: Node3D) -> void:
+	if body != player or _eliminated or _finished or _pending_door != null:
 		return
-	if _points < door_cost:
-		hud.notify({"type": "info", "title": "NOT ENOUGH POINTS", "detail": "THE DOOR CLOSES AGAIN"})
-		rec.door.close()
+	if _points < door.cost:
+		hud.notify({"type": "info", "title": "NOT ENOUGH POINTS", "detail": "YOU CANNOT RESERVE THIS DOOR"})
 		return
-	var taken: int = _reserved.get(rec, 0) + 1
-	_reserved[rec] = taken
-	generator.set_door_state(rec, door_capacity, taken)
-	if taken >= door_capacity:
-		rec.door.set_locked(true)
+	if not door.reserve_passage(player):
+		return
+	_pending_door = door
 	_doors_opened += 1
-	_spend(door_cost, "DOOR")
+	_wait_for_reservation_timeout(door)
+
+
+func _wait_for_reservation_timeout(door: StandardDoor) -> void:
+	await get_tree().create_timer(door.reservation_timeout).timeout
+	if _pending_door != door or not door.has_reservation(player):
+		return
+	if door.release_passage(player):
+		_pending_door = null
+		hud.notify({"type": "info", "title": "RESERVATION EXPIRED", "detail": "YOU DID NOT CROSS THE DOOR"})
+
+
+func _on_door_passage_completed(body: Node3D, door: StandardDoor) -> void:
+	if body != player or _pending_door != door:
+		return
+	_pending_door = null
+	_spend(door.cost, "DOOR")
+
+
+func _on_door_passage_cancelled(body: Node3D, door: StandardDoor) -> void:
+	if body == player and _pending_door == door:
+		_pending_door = null
 
 
 func _on_room_entered(room, body: Node3D) -> void:
@@ -92,7 +100,7 @@ func _on_exit_reached(body: Node3D) -> void:
 	hud.show_victory({
 		"points": _points, "place": 1, "total_players": 1, "can_spectate": false,
 		"stats": [
-			{"label": "Doors opened", "value": "%02d" % _doors_opened},
+			{"label": "Doors crossed", "value": "%02d" % _doors_opened},
 			{"label": "Points spent", "value": "%02d" % _points_spent},
 			{"label": "Time", "value": "%02d:%02d" % [seconds / 60, seconds % 60]},
 		],
@@ -121,7 +129,6 @@ func _push_state() -> void:
 	})
 
 
-## The first node in the scene that has building_generator.gd on it.
 func _find_generator() -> Node3D:
 	for n in get_tree().current_scene.find_children("*", "Node3D", true, false):
 		if "door_records" in n:
