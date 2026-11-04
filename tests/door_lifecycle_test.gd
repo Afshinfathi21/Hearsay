@@ -34,6 +34,10 @@ func _run() -> void:
 			gen = n
 	player = get_first_node_in_group("player")
 	solo = level.get_node("SoloMatch")
+	# These tests are about doors only: mark every room's effect as already triggered, so teleporting the
+	# player around never charges a room penalty.
+	for rd in gen.room_list:
+		solo._penalised[rd.label] = true
 	player.set_process(false)
 	player.set_physics_process(false)
 	for rec in gen.door_records:
@@ -55,6 +59,9 @@ func _run() -> void:
 	await t_monitor()
 	await t_reserve_inside_doorway()
 	await t_interact_key_via_hitscan()
+	await t_locked_door()
+	await t_two_reservations_share_door()
+	await t_mid_crossing_is_protected()
 
 	print("\n%d passed, %d failed" % [passed_checks, failed_checks])
 	quit(1 if failed_checks > 0 else 0)
@@ -278,6 +285,61 @@ func t_interact_key_via_hitscan() -> void:
 	Input.action_release("interact")
 	await frames(3)
 	check(door.reserved == 1, "E on a door reserves a place")
+
+
+func t_locked_door() -> void:
+	_title("locked door (lockdown)")
+	await reset_state()
+	door.set_locked(true)
+	await place(1.0, 2.5)
+	door.interact(player)
+	check(door.reserved == 0, "a locked door cannot be reserved through interact")
+	check(not door.reserve_passage(make_dummy()), "reserve_passage() is refused while locked")
+	check(door.reserved == 0 and not door.is_open, "locked door stays closed with no reservation")
+	door.set_locked(false)
+	door.interact(player)
+	check(door.reserved == 1, "the door can be reserved again once unlocked")
+	door.release_passage(player)
+
+
+func t_two_reservations_share_door() -> void:
+	_title("two reservations: door stays open until the last one is done")
+	await reset_state()
+	var other := make_dummy()
+	check(door.reserve_passage(other), "first reservation (another player)")
+	await place(1.0, 2.5)
+	door.interact(player)
+	check(door.reserved == 2 and door.available == 0, "both places reserved, none available")
+	check(not door.reserve_passage(make_dummy()), "a third reservation is refused (capacity 2)")
+	await wait_until(func() -> bool: return door.is_open, 4.0)
+	check(await walk(1.0, 2.5), "the player crosses")
+	await frames(5)
+	check(solo._points == 9, "only the player who crossed is charged (10 -> %d)" % solo._points)
+	check(door.reserved == 1 and door.is_open, "door stays open while the other reservation is still held")
+	door.release_passage(other)
+	check(await wait_until(func() -> bool: return not door.is_open, 4.0), "door closes right after the last reservation ends")
+
+
+func t_mid_crossing_is_protected() -> void:
+	_title("a player who is already crossing may always finish")
+	await reset_state()
+	await place(1.0, 2.5)
+	door.interact(player)
+	await wait_until(func() -> bool: return door.is_open, 4.0)
+	await walk_to_local_z(-0.3)               # past the middle plane, still inside the doorway
+	check(door.reserved == 1, "reservation held while crossing")
+	check(not door.release_passage(player), "cancel is refused once the player is past the middle of the doorway")
+	door._expires[player.get_instance_id()] = door._clock    # force the timeout to be due now
+	await frames(5)
+	check(door.reserved == 1, "an expired reservation is not removed while the player is crossing")
+	door.reset_round()
+	check(door.reserved == 1, "reset_round() does not remove a player who is crossing")
+	check(door.is_open or door._target_open, "the door does not close while the player is crossing")
+	await walk_to_local_z(-2.5)               # finish the crossing
+	await frames(5)
+	check(solo._points == 9, "the crossing is charged once, after it finished (10 -> %d)" % solo._points)
+	check(door.reserved == 0, "reservation is gone after the crossing")
+	check(await wait_until(func() -> bool: return not door.is_open, 4.0), "door closes after the player finished crossing")
 
 
 # ---- helpers ---------------------------------------------------------------------------------

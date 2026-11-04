@@ -29,6 +29,9 @@ func _ready() -> void:
 		push_error("SoloMatch: could not find the building generator. Put building_generator.gd on your level root and assign it to Generator.")
 		return
 
+	if "point_budget" in generator and (generator.point_budget != starting_points or generator.door_cost != door_cost):
+		push_warning("SoloMatch: starting_points/door_cost differ from the generator's point_budget/door_cost; the route guarantee only holds when they match.")
+
 	for rec in generator.door_records:
 		if rec.door == null or rec.is_exit:
 			continue

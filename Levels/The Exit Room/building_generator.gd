@@ -8,6 +8,9 @@ extends Node3D
 ##     other side: if the room is on the perimeter the door leads straight outside; if it is in the middle, ONE
 ##     neighbouring room is left out, which makes an open-air courtyard behind the door. Only this door's monitor
 ##     shows a green "EXIT". The start room is then chosen far from the exit room.
+##   * room effects (penalties) are placed AFTER the room graph is analysed: distance from the start and from the
+##     exit decides how mild or harsh a room may be, chokepoint rooms stay clean, and a validation pass guarantees
+##     that an affordable route without lockdown rooms always exists (see _assign_penalties / _validate_effects)
 ##   * a monitor above every door, props that give each room type a recognisable look,
 ##     per-room penalty data, zones that tell you when a player enters a room, and an exit trigger
 ## Attach to your level root. The root needs a GridMap child named "GridMap".
@@ -22,6 +25,11 @@ const KIND_CENTER := 2
 const PENALTY_NONE := 0
 const PENALTY_LOSE_POINTS := 1              # amount = points lost on entering
 const PENALTY_SKIP_ROUND := 2               # the players cannot leave for 'amount' round(s)
+const ZONE_NEAR := 0                        # first third of the way from the start to the exit
+const ZONE_MID := 1
+const ZONE_FAR := 2                         # last third: close to the exit
+## Chance multiplier for a penalty in each zone (times penalty_fraction): mild near the start, harsh near the exit.
+const ZONE_DENSITY := [0.4, 1.0, 1.4]
 
 const N := RoomGrid.Dir.N
 const E := RoomGrid.Dir.E
@@ -52,6 +60,10 @@ const PROPS := {
 @export var label_rooms := true              # a number plate with the room's name (e.g. "C4") in every room
 @export var exit_anywhere := true             # false = the exit may only be on a perimeter room (door straight to the outside)
 @export var exit_locked := false
+## The economy the generator guarantees a route for. Keep these equal to the match settings (SoloMatch warns if not).
+@export var point_budget := 10               # points a player starts with
+@export var door_cost := 1                   # points every ordinary door costs
+@export var min_route_margin := 2            # points that must still be left after the cheapest route to the exit
 @export var draw_distance := 35.0            # doors, monitors and props are hidden beyond this many metres
 
 
@@ -63,6 +75,9 @@ class RoomData extends RefCounted:
 	var doors := 0                           # usable doors, including the exit door
 	var is_start := false
 	var is_exit := false
+	var zone := 0                            # ZONE_NEAR / ZONE_MID / ZONE_FAR (progress from the start to the exit)
+	var dist_start := 0                      # doors from the start room
+	var dist_exit := 0                       # doors from the exit room
 	var label := ""                          # e.g. "C4"
 	var cells: Array[Vector2i] = []
 
@@ -85,6 +100,10 @@ var has_hole := false                        # true when the exit is inside the 
 var hole_room := Vector2i(-1, -1)            # grid position of that missing room (an open-air courtyard)
 var exit_dir := 0
 var start_distance := 0                     # doors between the start room and the exit room
+var safe_route: Array[Vector2i] = []         # cheapest start -> exit route without lockdown rooms (validated)
+var route_cost := 0                          # points that route costs (doors + lose-points rooms)
+var route_points_left := 0                   # point_budget - route_cost; always >= min_route_margin
+var effects_repaired := 0                    # penalties removed by validation to keep the building completable
 var exit_door: Node3D
 var exit_position := Vector3.ZERO            # world position of the exit doorway
 var spawn_points: Array[Vector3] = []        # 9 positions in the start room
@@ -145,7 +164,8 @@ func get_layout() -> Dictionary:
 	var rs := []
 	for rd in room_list:
 		rs.append({"coord": [rd.coord.x, rd.coord.y], "label": rd.label, "kind": rd.kind, "doors": rd.doors,
-			"penalty": rd.penalty, "amount": rd.amount, "start": rd.is_start, "exit": rd.is_exit})
+			"penalty": rd.penalty, "amount": rd.amount, "start": rd.is_start, "exit": rd.is_exit,
+			"zone": rd.zone, "dist_start": rd.dist_start, "dist_exit": rd.dist_exit})
 	var ds := []
 	for r in door_records:
 		ds.append({"a": [r.room_a.x, r.room_a.y], "b": [r.room_b.x, r.room_b.y], "exit": r.is_exit})
@@ -276,42 +296,196 @@ func _hole_ok(m: Vector2i, ex: Vector2i) -> bool:
 	return seen.size() == remaining
 
 
-## The start room is picked from the farthest quarter of the rooms (measured in doors from the exit room),
-## so the players always begin far from the exit.
+## The start room is picked from the farthest quarter of the rooms (measured in doors from the exit room), but only
+## among rooms the economy can afford: doors * door_cost must leave min_route_margin points. So the players begin
+## far from the exit, never farther than the point budget allows.
 func _choose_start() -> void:
-	var dist := {exit_room: 0}
-	var queue: Array[Vector2i] = [exit_room]
-	while not queue.is_empty():
-		var c: Vector2i = queue.pop_front()
-		for d in 4:
-			var n: Vector2i = c + RoomGrid.DIR_VECTORS[d]
-			if rooms.has(n) and not dist.has(n):
-				dist[n] = dist[c] + 1
-				queue.append(n)
+	var dist := _distances_from(exit_room)
+	var max_doors := (point_budget - min_route_margin) / maxi(door_cost, 1)
 	var list: Array = []
 	for rd in room_list:
 		if rd.coord != exit_room:
 			list.append([dist[rd.coord], rd.coord])
 	list.sort_custom(func(a, b): return a[0] > b[0] or (a[0] == b[0] and (a[1].y * 1000 + a[1].x) < (b[1].y * 1000 + b[1].x)))
+	var allowed: Array = list.filter(func(e): return e[0] <= max_doors)
+	if allowed.is_empty():
+		push_warning("point_budget %d is too small for any start room; using the nearest room" % point_budget)
+		allowed = [list.back()]
 	var take := maxi(3, list.size() / 4)
-	start_room = list[rng.randi() % mini(take, list.size())][1]
+	start_room = allowed[rng.randi() % mini(take, allowed.size())][1]
 	start_distance = int(dist[start_room])
 	rooms[start_room].is_start = true
 
 
-## Penalties are data only (apply them in your game logic when room_entered fires). The start room and the
-## exit room are always safe, so the level stays winnable.
+## Room effects are data only (apply them in your game logic when room_entered fires). They are placed from the
+## analysed room graph, never blindly:
+##   * every room gets its distance from the start and from the exit, and a zone (near / middle / far);
+##   * near the start effects are rarer and mild (lose 1 point), in the middle there are points and lockdowns,
+##     near the exit they are the most frequent and the most expensive;
+##   * the start room, the exit room and chokepoint rooms (every route passes through them) stay clean;
+##   * _validate_effects() then repairs the result so the building can always be completed.
 func _assign_penalties() -> void:
+	var from_start := _distances_from(start_room)
+	var from_exit := _distances_from(exit_room)
+	var chokes := _chokepoints()
 	for rd in room_list:
-		if rd.is_start or rd.is_exit:
+		rd.dist_start = int(from_start[rd.coord])
+		rd.dist_exit = int(from_exit[rd.coord])
+		var progress := float(rd.dist_start) / float(maxi(rd.dist_start + rd.dist_exit, 1))
+		rd.zone = ZONE_NEAR if progress < 0.34 else (ZONE_FAR if progress > 0.66 else ZONE_MID)
+		if rd.is_start or rd.is_exit or chokes.has(rd.coord):
 			continue
-		if rng.randf() < penalty_fraction:
+		if rng.randf() >= clampf(penalty_fraction * ZONE_DENSITY[rd.zone], 0.0, 1.0):
+			continue
+		_roll_effect(rd)
+	_validate_effects()
+
+
+func _roll_effect(rd: RoomData) -> void:
+	match rd.zone:
+		ZONE_NEAR:                                           # mild: lose one point
+			rd.penalty = PENALTY_LOSE_POINTS
+			rd.amount = 1
+		ZONE_MID:
 			if rng.randf() < 0.6:
 				rd.penalty = PENALTY_LOSE_POINTS
 				rd.amount = rng.randi_range(1, 2)
 			else:
 				rd.penalty = PENALTY_SKIP_ROUND
 				rd.amount = 1
+		_:                                                   # near the exit: harsher
+			if rng.randf() < 0.5:
+				rd.penalty = PENALTY_LOSE_POINTS
+				rd.amount = 2 if rng.randf() < 0.6 else 1
+			else:
+				rd.penalty = PENALTY_SKIP_ROUND
+				rd.amount = 1
+
+
+## Guarantee after the effects are placed: a route from the start to the exit exists that (a) never enters a
+## lockdown room and (b) costs at most point_budget - min_route_margin points. If not, the most expensive effect
+## on that route (or a lockdown that blocks every route) is replaced by a normal room and the check runs again.
+## It always ends: every repair removes one effect, and start selection already guarantees the bare doors fit.
+func _validate_effects() -> void:
+	var limit := point_budget - min_route_margin
+	effects_repaired = 0
+	for guard in room_list.size() + 1:
+		var route := _safe_route()
+		if not route.is_empty() and _route_cost(route) <= limit:
+			safe_route = route
+			route_cost = _route_cost(route)
+			route_points_left = point_budget - route_cost
+			return
+		var victim := _repair_target(route)
+		if victim == null:
+			break
+		victim.penalty = PENALTY_NONE
+		victim.amount = 0
+		effects_repaired += 1
+	push_warning("Building could not be validated: no affordable route with margin %d" % min_route_margin)
+	safe_route = _safe_route()
+	route_cost = _route_cost(safe_route) if not safe_route.is_empty() else 0
+	route_points_left = point_budget - route_cost
+
+
+func _repair_target(route: Array[Vector2i]) -> RoomData:
+	var best: RoomData = null
+	for c in route:                                          # too expensive: drop the costliest effect on the route
+		var rd: RoomData = rooms[c]
+		if rd.penalty == PENALTY_LOSE_POINTS and (best == null or rd.amount > best.amount):
+			best = rd
+	if best != null:
+		return best
+	# No route, or a route that is only long because effects force a detour: drop the effect that sits
+	# closest to the shortest way from the start to the exit (ties: the more expensive one).
+	for rd in room_list:
+		if rd.penalty == PENALTY_NONE:
+			continue
+		if best == null:
+			best = rd
+			continue
+		var detour := rd.dist_start + rd.dist_exit
+		var best_detour := best.dist_start + best.dist_exit
+		if detour < best_detour or (detour == best_detour and rd.amount > best.amount):
+			best = rd
+	return best
+
+
+## Points a route costs: every room entered after the first costs one door plus its lose-points amount.
+func _route_cost(route: Array[Vector2i]) -> int:
+	var cost := 0
+	for i in range(1, route.size()):
+		var rd: RoomData = rooms[route[i]]
+		cost += door_cost + (rd.amount if rd.penalty == PENALTY_LOSE_POINTS else 0)
+	return cost
+
+
+## Cheapest start -> exit route that never enters a lockdown room (Dijkstra). Empty when there is none.
+func _safe_route() -> Array[Vector2i]:
+	var cost := {start_room: 0}
+	var prev := {}
+	var open: Array[Vector2i] = [start_room]
+	while not open.is_empty():
+		var bi := 0
+		for i in open.size():
+			if cost[open[i]] < cost[open[bi]]:
+				bi = i
+		var c: Vector2i = open.pop_at(bi)
+		if c == exit_room:
+			break
+		for n in _neighbours(c):
+			var rd: RoomData = rooms[n]
+			if rd.penalty == PENALTY_SKIP_ROUND:
+				continue
+			var nc: int = int(cost[c]) + door_cost + (rd.amount if rd.penalty == PENALTY_LOSE_POINTS else 0)
+			if not cost.has(n) or nc < int(cost[n]):
+				cost[n] = nc
+				prev[n] = c
+				if not open.has(n):
+					open.append(n)
+	var route: Array[Vector2i] = []
+	if not cost.has(exit_room):
+		return route
+	var at := exit_room
+	while at != start_room:
+		route.push_front(at)
+		at = prev[at]
+	route.push_front(start_room)
+	return route
+
+
+## Rooms (other than start and exit) that every route from the start to the exit has to pass through.
+func _chokepoints() -> Dictionary:
+	var out := {}
+	for rd in room_list:
+		if rd.coord == start_room or rd.coord == exit_room:
+			continue
+		if not _distances_from(start_room, {rd.coord: true}).has(exit_room):
+			out[rd.coord] = true
+	return out
+
+
+## Rooms joined to `c` by an ordinary door: every neighbouring room that exists.
+func _neighbours(c: Vector2i) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for d in 4:
+		var n: Vector2i = c + RoomGrid.DIR_VECTORS[d]
+		if rooms.has(n):
+			out.append(n)
+	return out
+
+
+## Breadth-first distance in doors from `origin`; rooms in `blocked` cannot be entered.
+func _distances_from(origin: Vector2i, blocked := {}) -> Dictionary:
+	var dist := {origin: 0}
+	var queue: Array[Vector2i] = [origin]
+	while not queue.is_empty():
+		var c: Vector2i = queue.pop_front()
+		for n in _neighbours(c):
+			if not dist.has(n) and not blocked.has(n):
+				dist[n] = int(dist[c]) + 1
+				queue.append(n)
+	return dist
 
 
 # ---- links: open plan inside rooms, one centred door between every pair of neighbours -----------
