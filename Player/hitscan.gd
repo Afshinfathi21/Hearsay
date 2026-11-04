@@ -46,7 +46,7 @@ func _process(_delta: float) -> void:
 	if door != null:
 		door_focused.emit(door)
 		if Input.is_action_just_pressed("interact"):
-			door.interact()
+			door.interact(_player)
 	elif _had_door:
 		door_unfocused.emit()
 	_had_door = door != null

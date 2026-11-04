@@ -12,7 +12,7 @@ var _eliminated := false
 var _finished := false
 var _room_label := ""
 var _penalised := {}
-var _doors_opened := 0
+var _doors_crossed := 0
 var _points_spent := 0
 var _start_msec := 0
 var _pending_door: StandardDoor
@@ -33,18 +33,30 @@ func _ready() -> void:
 		if rec.door == null or rec.is_exit:
 			continue
 		rec.door.cost = door_cost
+		rec.door.passage_validator = _can_cross
 		generator.set_door_state(rec, door_capacity, 0)
 		rec.door.interaction_requested.connect(_on_door_interaction_requested)
 		rec.door.passage_completed.connect(_on_door_passage_completed.bind(rec.door))
 		rec.door.passage_cancelled.connect(_on_door_passage_cancelled.bind(rec.door))
+		rec.door.reservation_expired.connect(_on_door_reservation_expired)
+		rec.door.passage_rejected.connect(_on_door_passage_rejected)
 	generator.room_entered.connect(_on_room_entered)
 	generator.exit_reached.connect(_on_exit_reached)
 	hud.victory_continue.connect(func() -> void: get_tree().reload_current_scene())
 	_push_state()
 
 
+## The player pressed interact on a door: cancel their reservation if they hold one,
+## otherwise try to reserve a place. The door itself checks capacity and lockdown.
 func _on_door_interaction_requested(door: StandardDoor, body: Node3D) -> void:
-	if body != player or _eliminated or _finished or _pending_door != null:
+	if body != player or _eliminated or _finished:
+		return
+	if door.has_reservation(player):
+		if door.release_passage(player):
+			hud.notify({"type": "info", "title": "RESERVATION CANCELLED", "detail": "YOUR PLACE WAS RELEASED"})
+		return
+	if _pending_door != null:
+		hud.notify({"type": "info", "title": "ONE DOOR AT A TIME", "detail": "CANCEL YOUR CURRENT RESERVATION FIRST"})
 		return
 	if _points < door.cost:
 		hud.notify({"type": "info", "title": "NOT ENOUGH POINTS", "detail": "YOU CANNOT RESERVE THIS DOOR"})
@@ -52,16 +64,12 @@ func _on_door_interaction_requested(door: StandardDoor, body: Node3D) -> void:
 	if not door.reserve_passage(player):
 		return
 	_pending_door = door
-	_doors_opened += 1
-	_wait_for_reservation_timeout(door)
 
 
-func _wait_for_reservation_timeout(door: StandardDoor) -> void:
-	await get_tree().create_timer(door.reservation_timeout).timeout
-	if _pending_door != door or not door.has_reservation(player):
-		return
-	if door.release_passage(player):
-		_pending_door = null
+## Asked by the door when the reserved player enters the doorway. Points can change between
+## reserving and crossing (a transfer, a penalty), so they are checked again here.
+func _can_cross(body: Node3D, door: StandardDoor) -> bool:
+	return body == player and not _eliminated and not _finished and _points >= door.cost
 		hud.notify({"type": "info", "title": "RESERVATION EXPIRED", "detail": "YOU DID NOT CROSS THE DOOR"})
 
 

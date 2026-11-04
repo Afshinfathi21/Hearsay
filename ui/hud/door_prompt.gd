@@ -6,8 +6,10 @@ extends PanelContainer
 ## info = {
 ##   "cost": 3,          # points the door costs
 ##   "capacity": 2,      # places this round
-##   "reserved": 0,      # places already taken
+##   "reserved": 0,      # places held by players who have not crossed yet
+##   "available": 2,     # optional: places still free (capacity - used - reserved)
 ##   "locked": false,    # optional: temporary lockdown
+##   "exit": false,      # optional: the real exit door (free, no places)
 ## }
 
 @export var interact_action := &"interact"
@@ -38,12 +40,17 @@ func show_for_door(info: Dictionary, player_points: int) -> void:
 	var capacity: int = info.get("capacity", 0)
 	var reserved: int = info.get("reserved", 0)
 	var locked: bool = info.get("locked", false)
-	var remaining := maxi(capacity - reserved, 0)
+	var remaining: int = info.get("available", maxi(capacity - reserved, 0))
+	var is_exit: bool = info.get("exit", false)
 
 	var usable := false
 	var message := ""
 	var message_colour := UIStyle.RED
-	if locked or capacity <= 0:
+	if is_exit:
+		usable = not locked
+		message = "DOOR LOCKED" if locked else "THE WAY OUT"
+		message_colour = UIStyle.RED if locked else UIStyle.AMBER
+	elif locked or capacity <= 0:
 		message = "DOOR CLOSED"
 	elif remaining <= 0:
 		message = "NO PLACES LEFT"
@@ -59,10 +66,10 @@ func show_for_door(info: Dictionary, player_points: int) -> void:
 
 	key_label.text = _key_text()
 	key_label.add_theme_color_override("font_color", UIStyle.AMBER if usable else UIStyle.TEXT_DISABLED)
-	action_label.text = "PASS THROUGH" if usable else "UNAVAILABLE"
+	action_label.text = ("OPEN / CLOSE EXIT" if is_exit else "RESERVE A PLACE") if usable else "UNAVAILABLE"
 	action_label.add_theme_color_override("font_color", UIStyle.TEXT if usable else UIStyle.TEXT_DISABLED)
-	cost_label.text = "COST  %02d PTS" % cost
-	capacity_label.text = "PLACES  %02d / %02d" % [remaining, capacity]
+	cost_label.text = "FREE" if is_exit else "COST  %02d PTS" % cost
+	capacity_label.text = "EXIT" if is_exit else "PLACES  %02d / %02d" % [remaining, capacity]
 	status_label.text = message
 	status_label.add_theme_color_override("font_color", message_colour)
 

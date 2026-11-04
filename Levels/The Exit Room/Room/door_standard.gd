@@ -1,36 +1,84 @@
 class_name StandardDoor
 extends Node3D
+## Drives Doors/door_standard.glb. RoomGrid.spawn_doors() attaches this to the imported scene.
+##
+## An ordinary door is a limited-capacity passage, not a door players open freely:
+##   closed -> reservation -> opening -> crossing -> payment -> closing -> reset
+##
+##   * capacity is PER ROUND: every completed crossing uses one place until reset_round().
+##     available = capacity - passed - reserved.
+##   * reserve_passage() is called by the host (the game controller) after it validated the player.
+##     It opens the door and lets that player (only) through the PassageGate barrier.
+##   * Crossing is detected by the PassageZone: the player must enter on one side and leave on the
+##     other. Proximity alone never counts. passage_completed fires once, AFTER the crossing; the host
+##     charges the cost then. Expired, cancelled, backed-out or rejected reservations cost nothing.
+##   * The door closes by itself as soon as no reservation is left. A player who already passed the
+##     middle of the doorway is never released or locked out; they finish crossing safely.
+##   * The real exit door is separate: it has no capacity or cost and simply toggles open/closed.
+##
+## Everything that changes game state (reserve, release, reset_round, set_locked) is a plain method
+## call, so a host-authoritative network layer can drive it later. The door never touches points.
 
 signal opened
 signal closed
+## The player pressed interact on the door. The host decides whether to reserve or cancel.
 signal interaction_requested(door: StandardDoor, body: Node3D)
+## The body crossed the doorway completely. The host charges the cost here.
 signal passage_completed(body: Node3D)
+## A reservation ended WITHOUT a crossing (cancelled, expired, backed out, rejected, round reset).
 signal passage_cancelled(body: Node3D)
+## Specific reasons, emitted just before passage_cancelled so the host can show a message.
+signal reservation_expired(body: Node3D)
+signal passage_rejected(body: Node3D)
 
 const CLIP := "Door_Open"
 const AMBER := Color("FFA21F")
 const RED := Color("E5201B")
-const INTERACT_LAYER := 1 << 1
+const INTERACT_LAYER := 1 << 1          # physics layer 2: the ray that finds the door
+const GATE_LAYER := 1                   # physics layer 1: what the player collides with
+
+## Points one crossing costs (charged by the host, after the crossing).
+@export var cost := 1
+## Seconds a reservation stays valid if the player does not cross.
+@export_range(1.0, 60.0, 0.5) var reservation_timeout := 15.0
+
+## Places per round, places already used by completed crossings, and reservations being held.
+var capacity := 0
+var passed := 0
+var reserved := 0
+## Places that can still be reserved.
+var available: int:
+	get:
+		return maxi(capacity - passed - reserved, 0)
 
 var is_open := false
+## Administrative lock (lockdown). Not the same as "full": a full door has available == 0.
 var is_locked := false
-var _target_open := false
+## True for the one real exit door (the building generator sets it).
+var is_exit := false:
+	set(value):
+		is_exit = value
+		_update_gate()
+
+## Host hook: Callable(body: Node3D, door: StandardDoor) -> bool. Asked when a reserved player
+## enters the doorway. Return false (e.g. not enough points any more) to cancel the crossing.
+var passage_validator := Callable()
+
+var _target_open := false               # what the door should be; the animation follows it
+var _opening := false                   # direction of the animation that is running
 var _anim: AnimationPlayer
 var _lights: Array[MeshInstance3D] = []
 var _light_mat: StandardMaterial3D
 var _passage_zone: Area3D
+var _gate: StaticBody3D
 
-@export var cost := 1
-@export_range(1.0, 60.0, 0.5) var reservation_timeout := 15.0
-var capacity := 0
-var reserved := 0
-var is_exit := false
-
-# Instance ID -> reserved player. A reservation is not charged until the player crosses.
+# Instance ID -> reserved body. Nothing is charged until the body crosses.
 var _reservations: Dictionary = {}
-# Instance ID -> side from which the player entered the doorway.
-var _crossing_from: Dictionary = {}
-var _release_after_crossing: Dictionary = {}
+# Instance ID -> time (door clock) when the reservation expires.
+var _expires: Dictionary = {}
+# Instance ID -> side (+1 / -1) of the doorway the body entered from.
+var _entered_side: Dictionary = {}
+var _clock := 0.0
 
 
 func _ready() -> void:
@@ -45,29 +93,47 @@ func _ready() -> void:
 		light.material_override = _light_mat
 	set_locked(false)
 	add_to_group("door")
+	set_physics_process(false)
 	_make_interact_zone()
 	_make_passage_zone()
+	_make_gate()
 
 
-## Request a passage slot. The game controller decides whether this player may reserve it.
+## What the player's interact key calls. Ordinary doors only ask the host (reserve or cancel);
+## the exit door just toggles.
 func interact(body: Node3D = null) -> void:
-	if body == null or _anim.is_playing() or is_locked or reserved >= capacity:
+	if is_exit:
+		if not is_locked:
+			if _target_open:
+				close()
+			else:
+				open()
 		return
-	interaction_requested.emit(self, body)
+	if body == null or is_locked:
+		return
+	if has_reservation(body) or available > 0:
+		interaction_requested.emit(self, body)
 
 
-## Called by the game controller after validating points, capacity and player state.
+## Host: give this body a place. The door opens and only reservation holders can pass.
+## The host must already have checked the player (alive, enough points, one reservation at a time).
 func reserve_passage(body: Node3D) -> bool:
-	if body == null or not is_instance_valid(body) or is_exit:
+	if body == null or not is_instance_valid(body) or is_exit or is_locked:
 		return false
 	var id := body.get_instance_id()
-	if _reservations.has(id) or reserved >= capacity:
+	if _reservations.has(id) or available <= 0:
 		return false
 	_reservations[id] = body
+	_expires[id] = _clock + reservation_timeout
 	reserved = _reservations.size()
+	_allow_through(body, true)
+	set_physics_process(true)
 	_refresh_monitor()
-	if not is_open and not _target_open:
-		open()
+	_target_open = true
+	_sync_anim()
+	# The player may already be standing in the doorway when the reservation is made.
+	if body is CollisionObject3D and _passage_zone.overlaps_body(body):
+		_begin_crossing(body)
 	return true
 
 
@@ -75,16 +141,13 @@ func has_reservation(body: Node3D) -> bool:
 	return body != null and _reservations.has(body.get_instance_id())
 
 
-## A timeout/cancellation cannot release a player who is physically inside the doorway.
-## Their reservation is released when they leave the trigger; a full crossing still completes.
+## Host or player: give the place back. Free of charge. Refused (false) only when the body has
+## already passed the middle of the doorway: it is crossing and must be allowed to finish.
 func release_passage(body: Node3D) -> bool:
 	if body == null:
 		return false
 	var id := body.get_instance_id()
-	if not _reservations.has(id):
-		return false
-	if _crossing_from.has(id):
-		_release_after_crossing[id] = true
+	if not _reservations.has(id) or _past_midplane(id):
 		return false
 	_remove_reservation(id)
 	passage_cancelled.emit(body)
@@ -92,91 +155,191 @@ func release_passage(body: Node3D) -> bool:
 	return true
 
 
+## Start a new round: unused reservations are released (free), places are restored and the
+## door closes. Bodies already crossing finish safely. new_capacity < 0 keeps the capacity.
+func reset_round(new_capacity := -1) -> void:
+	for id in _reservations.keys():
+		if _past_midplane(id):
+			continue
+		var body = _reservations[id]
+		_remove_reservation(id)
+		if is_instance_valid(body):
+			passage_cancelled.emit(body)
+	passed = 0
+	if new_capacity >= 0:
+		capacity = new_capacity
+	_refresh_monitor()
+	_close_if_empty()
+
+
 func open() -> void:
-	if is_open or _target_open or _anim.is_playing():
-		return
 	_target_open = true
-	_anim.play(CLIP)
+	_sync_anim()
 
 
 func close() -> void:
-	if not is_open or _anim.is_playing():
-		return
 	_target_open = false
-	_anim.play_backwards(CLIP)
+	_sync_anim()
 
 
+## Administrative lock (lockdown): nobody can reserve while locked. Separate from "full".
 func set_locked(locked: bool) -> void:
 	is_locked = locked
-	_light_mat.emission = RED if locked else AMBER
+	_refresh_monitor()
 
 
-func set_round_state(new_capacity: int, _new_reserved: int) -> void:
+## Host: set the places for this round. The second argument is kept for older callers;
+## reservations are always counted by the door itself.
+func set_round_state(new_capacity: int, _new_reserved: int = 0) -> void:
 	capacity = maxi(new_capacity, 0)
-	reserved = _reservations.size()
 	_refresh_monitor()
 
 
 func get_hud_info() -> Dictionary:
-	return {"cost": cost, "capacity": capacity, "reserved": reserved, "locked": is_locked, "exit": is_exit}
+	return {"cost": cost, "capacity": capacity, "reserved": reserved, "passed": passed,
+		"available": available, "locked": is_locked, "exit": is_exit}
 
 
-func _refresh_monitor() -> void:
-	if is_exit:
-		return
-	var open_slots := maxi(capacity - reserved, 0)
-	set_locked(open_slots <= 0)
-	for monitor in get_meta("monitors", []):
-		monitor.show_number(capacity)
-		monitor.set_capacity(open_slots)
-		monitor.set_locked(open_slots <= 0)
+func _physics_process(delta: float) -> void:
+	_clock += delta
+	for id in _expires.keys():
+		if _clock < float(_expires[id]):
+			continue
+		var body = _reservations.get(id)
+		if body == null or not is_instance_valid(body):
+			_remove_reservation(id)
+			continue
+		if _past_midplane(id):
+			continue                        # crossing right now: let them finish
+		_remove_reservation(id)
+		reservation_expired.emit(body)
+		passage_cancelled.emit(body)
+	_close_if_empty()
 
 
-func _remove_reservation(id: int) -> void:
-	_reservations.erase(id)
-	_crossing_from.erase(id)
-	_release_after_crossing.erase(id)
-	reserved = _reservations.size()
-	_refresh_monitor()
-
-
-func _close_if_empty() -> void:
-	if reserved == 0 and is_open:
-		close()
-
-
-func _on_finished(_name: StringName) -> void:
-	is_open = _target_open
-	if is_open:
-		opened.emit()
-		# A reservation may have expired while the opening animation was playing.
-		if reserved == 0:
-			call_deferred("close")
-	else:
-		closed.emit()
-
-
+# ---- crossing detection ----------------------------------------------------------------------
 func _on_passage_entered(body: Node3D) -> void:
-	var id := body.get_instance_id()
-	if not _reservations.has(id):
-		return
-	var local_z := to_local(body.global_position).z
-	_crossing_from[id] = signf(local_z)
+	if _reservations.has(body.get_instance_id()):
+		_begin_crossing(body)
 
 
 func _on_passage_exited(body: Node3D) -> void:
 	var id := body.get_instance_id()
-	if not _crossing_from.has(id):
+	if not _reservations.has(id) or not _entered_side.has(id):
 		return
-	var entered_side: float = _crossing_from[id]
-	var exited_side := signf(to_local(body.global_position).z)
-	if exited_side != 0.0 and exited_side != entered_side:
-		_remove_reservation(id)
+	var crossed := body.is_inside_tree() and _side_of(body) != float(_entered_side[id])
+	if crossed:
+		passed += 1
+	_remove_reservation(id)
+	if crossed:
 		passage_completed.emit(body)
 	else:
-		_remove_reservation(id)
-		passage_cancelled.emit(body)
+		passage_cancelled.emit(body)         # backed out on the side they came from
 	_close_if_empty()
+
+
+## The reserved body is in the doorway: ask the host whether the crossing is still valid.
+func _begin_crossing(body: Node3D) -> void:
+	var id := body.get_instance_id()
+	if passage_validator.is_valid() and not bool(passage_validator.call(body, self)):
+		_remove_reservation(id)
+		passage_rejected.emit(body)
+		passage_cancelled.emit(body)
+		_close_if_empty()
+		return
+	_entered_side[id] = _side_of(body)
+
+
+func _side_of(body: Node3D) -> float:
+	return 1.0 if to_local(body.global_position).z >= 0.0 else -1.0
+
+
+## True once the body is on the far side of the doorway's middle plane.
+func _past_midplane(id: int) -> bool:
+	var body = _reservations.get(id)
+	if body == null or not is_instance_valid(body) or not _entered_side.has(id):
+		return false
+	return _side_of(body) != float(_entered_side[id])
+
+
+# ---- internals -------------------------------------------------------------------------------
+func _remove_reservation(id: int) -> void:
+	var body = _reservations.get(id)
+	if body != null and is_instance_valid(body):
+		_allow_through(body, false)
+	_reservations.erase(id)
+	_expires.erase(id)
+	_entered_side.erase(id)
+	reserved = _reservations.size()
+	if _reservations.is_empty():
+		set_physics_process(false)
+	_refresh_monitor()
+
+
+func _close_if_empty() -> void:
+	if reserved == 0 and not is_exit:
+		_target_open = false
+		_sync_anim()
+
+
+## The animation follows _target_open. If the target changes while the door is moving (a
+## reservation made during the closing animation, say), the animation reverses from where it
+## is instead of finishing first, so the door reacts at once and never ends up in the wrong state.
+func _sync_anim() -> void:
+	if _anim.is_playing():
+		if _target_open != _opening:
+			_opening = _target_open
+			if _opening:
+				_anim.play(CLIP)
+			else:
+				_anim.play_backwards(CLIP)
+		return
+	if _target_open and not is_open:
+		_opening = true
+		_anim.play(CLIP)
+	elif not _target_open and is_open:
+		_opening = false
+		_anim.play_backwards(CLIP)
+
+
+func _on_finished(_name: StringName) -> void:
+	is_open = _opening
+	if is_open:
+		opened.emit()
+	else:
+		closed.emit()
+	_sync_anim.call_deferred()
+
+
+## Monitors show the capacity digits and one pip per available place. Lamp and digits turn red
+## when the door is locked or full. The exit door's monitors keep their green EXIT sign.
+func _refresh_monitor() -> void:
+	var unavailable := is_locked or (not is_exit and available <= 0)
+	if _light_mat != null:
+		_light_mat.emission = RED if unavailable else AMBER
+	if is_exit:
+		return
+	for monitor in get_meta("monitors", []):
+		monitor.show_number(capacity)
+		monitor.set_capacity(available)
+		monitor.set_locked(unavailable)
+
+
+## Per-player barrier: the gate blocks everybody except bodies holding a reservation.
+func _allow_through(body: Node3D, allowed: bool) -> void:
+	if _gate == null or not (body is PhysicsBody3D):
+		return
+	if allowed:
+		_gate.add_collision_exception_with(body)
+		(body as PhysicsBody3D).add_collision_exception_with(_gate)
+	else:
+		_gate.remove_collision_exception_with(body)
+		(body as PhysicsBody3D).remove_collision_exception_with(_gate)
+
+
+func _update_gate() -> void:
+	if _gate != null:
+		_gate.collision_layer = 0 if is_exit else GATE_LAYER
 
 
 ## The raycast target remains available from either side, but this zone never blocks movement.
@@ -212,3 +375,20 @@ func _make_passage_zone() -> void:
 	add_child(_passage_zone)
 	_passage_zone.body_entered.connect(_on_passage_entered)
 	_passage_zone.body_exited.connect(_on_passage_exited)
+
+
+## A thin solid wall across the doorway. Reserved players get a collision exception, so for
+## them it does not exist; everybody else is stopped even while the door stands open.
+func _make_gate() -> void:
+	_gate = StaticBody3D.new()
+	_gate.name = "PassageGate"
+	_gate.collision_layer = GATE_LAYER
+	_gate.collision_mask = 0
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(2.0, 2.6, 0.1)
+	shape.shape = box
+	shape.position = Vector3(0, 1.3, 0)
+	_gate.add_child(shape)
+	add_child(_gate)
+	_update_gate()
