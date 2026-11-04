@@ -70,13 +70,25 @@ func _on_door_interaction_requested(door: StandardDoor, body: Node3D) -> void:
 ## reserving and crossing (a transfer, a penalty), so they are checked again here.
 func _can_cross(body: Node3D, door: StandardDoor) -> bool:
 	return body == player and not _eliminated and not _finished and _points >= door.cost
+
+
+func _on_door_reservation_expired(body: Node3D) -> void:
+	if body == player:
+		_pending_door = null
 		hud.notify({"type": "info", "title": "RESERVATION EXPIRED", "detail": "YOU DID NOT CROSS THE DOOR"})
+
+
+func _on_door_passage_rejected(body: Node3D) -> void:
+	if body == player:
+		_pending_door = null
+		hud.notify({"type": "info", "title": "PASSAGE REJECTED", "detail": "YOU NO LONGER MEET THE REQUIREMENTS"})
 
 
 func _on_door_passage_completed(body: Node3D, door: StandardDoor) -> void:
 	if body != player or _pending_door != door:
 		return
 	_pending_door = null
+	_doors_crossed += 1
 	_spend(door.cost, "DOOR")
 
 
@@ -108,7 +120,7 @@ func _on_exit_reached(body: Node3D) -> void:
 	hud.show_victory({
 		"points": _points, "place": 1, "total_players": 1, "can_spectate": false,
 		"stats": [
-			{"label": "Doors crossed", "value": "%02d" % _doors_opened},
+			{"label": "Doors crossed", "value": "%02d" % _doors_crossed},
 			{"label": "Points spent", "value": "%02d" % _points_spent},
 			{"label": "Time", "value": "%02d:%02d" % [seconds / 60, seconds % 60]},
 		],
