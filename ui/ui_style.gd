@@ -113,6 +113,12 @@ static func glow(sb: StyleBoxFlat, color: Color, size: int = 6) -> StyleBoxFlat:
 	return sb
 
 
+static func _grabber_icon(colour: Color) -> ImageTexture:
+	var img := Image.create(8, 22, false, Image.FORMAT_RGBA8)
+	img.fill(colour)
+	return ImageTexture.create_from_image(img)
+
+
 static func _label_variant(t: Theme, variant: StringName, color: Color,
 		size: int = FONT_BODY, font: Font = null) -> void:
 	t.set_type_variation(variant, &"Label")
@@ -232,6 +238,23 @@ static func build_theme() -> Theme:
 		t.set_stylebox("grabber", sb_type, box(METAL))
 		t.set_stylebox("grabber_highlight", sb_type, box(METAL_LIGHT))
 		t.set_stylebox("grabber_pressed", sb_type, box(AMBER))
+
+	# --- Sliders (settings) ---
+	t.set_stylebox("slider", "HSlider", box(SURFACE_0, METAL, BORDER, 0, 3))
+	t.set_stylebox("grabber_area", "HSlider", box(AMBER_DIM, AMBER_DIM, BORDER, 0, 3))
+	t.set_stylebox("grabber_area_highlight", "HSlider", box(AMBER, AMBER, BORDER, 0, 3))
+	t.set_icon("grabber", "HSlider", _grabber_icon(TEXT))
+	t.set_icon("grabber_highlight", "HSlider", _grabber_icon(AMBER))
+	t.set_icon("grabber_disabled", "HSlider", _grabber_icon(METAL))
+
+	# --- Drop-down lists (OptionButton uses the Button styles above) ---
+	t.set_stylebox("panel", "PopupMenu", box(SURFACE_2, METAL_LIGHT, BORDER, SP_2, SP_2))
+	t.set_stylebox("hover", "PopupMenu", box(Color(AMBER, 0.18)))
+	t.set_stylebox("separator", "PopupMenu", line_h)
+	t.set_color("font_color", "PopupMenu", TEXT)
+	t.set_color("font_hover_color", "PopupMenu", AMBER)
+	t.set_color("font_disabled_color", "PopupMenu", TEXT_DISABLED)
+	t.set_constant("v_separation", "PopupMenu", SP_3)
 
 	# --- Tooltips ---
 	t.set_stylebox("panel", "TooltipPanel", box(SURFACE_2, METAL_LIGHT, BORDER, SP_3, SP_2))

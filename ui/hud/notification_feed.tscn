@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://ui/hud/notification_feed.gd" id="1_feed"]
+[ext_resource type="PackedScene" path="res://ui/hud/notification_card.tscn" id="2_card"]
+
+[node name="NotificationFeed" type="VBoxContainer"]
+custom_minimum_size = Vector2(340, 0)
+mouse_filter = 2
+theme_override_constants/separation = 8
+alignment = 2
+script = ExtResource("1_feed")
+card_scene = ExtResource("2_card")

@@ -19,6 +19,7 @@ extends CharacterBody3D
 @export var air_control : float = 15.0
 
 @export_group("Camera")
+## Used only if the settings menu is not in the project; otherwise the player's setting is used.
 @export var mouse_sensitivity : float = 0.002
 ## How far behind the character the camera sits.
 @export var camera_distance : float = 4.0
@@ -45,6 +46,9 @@ extends CharacterBody3D
 
 var gravity : float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
+## Set to true by the HUD while a full-screen panel (such as point transfer) is open.
+var input_blocked : bool = false
+
 var _yaw : float = 0.0
 var _first_person : bool = false
 var _cam_dist : float = 0.0   # current (smoothed) camera distance
@@ -58,6 +62,7 @@ var _camera: Camera3D
 
 
 func _ready() -> void:
+	add_to_group("player")
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	_ensure_toggle_action()
 	_find_model()
@@ -145,20 +150,26 @@ func _update_camera() -> void:
 	_camera.position = Vector3(side, 0.0, dist)
 
 
+## A value from the player's settings (settings menu), or the fallback if it is not there.
+func _setting(key: String, fallback: Variant) -> Variant:
+	var saved: Variant = GameSettings.get_value("player", key)
+	return saved if saved != null else fallback
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		# Applied immediately, so no mouse movement is lost between physics frames.
-		_yaw -= event.relative.x * mouse_sensitivity
+		var sensitivity: float = _setting("mouse_sensitivity", mouse_sensitivity)
+		var y_sign: float = -1.0 if _setting("invert_y", false) else 1.0
+		_yaw -= event.relative.x * sensitivity
 		_pitch = clampf(
-			_pitch - event.relative.y * mouse_sensitivity,
+			_pitch - event.relative.y * sensitivity * y_sign,
 			deg_to_rad(pitch_min_deg),
 			deg_to_rad(pitch_max_deg)
 		)
 		head.rotation = Vector3(_pitch, _yaw, 0.0)
 	elif event.is_action_pressed("toggle_camera"):
 		_first_person = not _first_person
-	elif event.is_action_pressed("ui_cancel"):
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	elif event is InputEventMouseButton and event.pressed \
 			and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE:
 		# Click the game window to take the mouse back.
@@ -174,11 +185,11 @@ func _physics_process(delta: float) -> void:
 			velocity += get_gravity() * delta * fall_multiplier
 
 	# Jump: JUMP_VELOCITY is a height in metres.
-	if Input.is_action_just_pressed("jump") and is_on_floor():
+	if Input.is_action_just_pressed("jump") and is_on_floor() and not input_blocked:
 		velocity.y = sqrt(2.0 * gravity * JUMP_VELOCITY)
 
 	# Movement relative to where the camera is looking.
-	var input_dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	var input_dir := Vector2.ZERO if input_blocked else Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	var direction := (Basis(Vector3.UP, _yaw) * Vector3(input_dir.x, 0.0, input_dir.y)).normalized()
 
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)

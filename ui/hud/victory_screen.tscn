@@ -1,0 +1,109 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://ui/hud/victory_screen.gd" id="1_victory"]
+[ext_resource type="PackedScene" path="res://ui/hud/result_stat_row.tscn" id="2_row"]
+
+[node name="VictoryScreen" type="Control"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_victory")
+stat_row_scene = ExtResource("2_row")
+
+[node name="Scrim" type="ColorRect" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.04, 0.04, 0.05, 0.82)
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="Center"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(560, 0)
+layout_mode = 2
+theme_type_variation = &"AmberPanel"
+
+[node name="VBox" type="VBoxContainer" parent="Center/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="HeadlineLabel" type="Label" parent="Center/Panel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelDisplay"
+theme_override_colors/font_color = Color(0.94, 0.63, 0.19, 1)
+theme_override_font_sizes/font_size = 72
+text = "ESCAPED"
+horizontal_alignment = 1
+
+[node name="Rule" type="ColorRect" parent="Center/Panel/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+color = Color(0.94, 0.63, 0.19, 1)
+
+[node name="SubLabel" type="Label" parent="Center/Panel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelMuted"
+text = "1ST TO ESCAPE   /   6 PLAYERS"
+horizontal_alignment = 1
+
+[node name="PointsCaption" type="Label" parent="Center/Panel/VBox"]
+layout_mode = 2
+theme_type_variation = &"LabelCaption"
+text = "POINTS REMAINING"
+horizontal_alignment = 1
+
+[node name="PointsLabel" type="Label" parent="Center/Panel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelNumber"
+theme_override_font_sizes/font_size = 96
+text = "05"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="Center/Panel/VBox"]
+layout_mode = 2
+
+[node name="Stats" type="VBoxContainer" parent="Center/Panel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="HSeparator2" type="HSeparator" parent="Center/Panel/VBox"]
+layout_mode = 2
+
+[node name="Buttons" type="HBoxContainer" parent="Center/Panel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="SpectateButton" type="Button" parent="Center/Panel/VBox/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "WATCH OTHERS"
+
+[node name="ContinueButton" type="Button" parent="Center/Panel/VBox/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"ButtonPrimary"
+text = "CONTINUE"

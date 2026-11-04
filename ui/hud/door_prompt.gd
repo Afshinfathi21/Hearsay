@@ -8,7 +8,6 @@ extends PanelContainer
 ##   "capacity": 2,      # places this round
 ##   "reserved": 0,      # places already taken
 ##   "locked": false,    # optional: temporary lockdown
-##   "exit": false,      # optional: true for the one real exit door
 ## }
 
 @export var interact_action := &"interact"
@@ -39,24 +38,17 @@ func show_for_door(info: Dictionary, player_points: int) -> void:
 	var capacity: int = info.get("capacity", 0)
 	var reserved: int = info.get("reserved", 0)
 	var locked: bool = info.get("locked", false)
-	var is_exit: bool = info.get("exit", false)
 	var remaining := maxi(capacity - reserved, 0)
 
 	var usable := false
 	var message := ""
 	var message_colour := UIStyle.RED
-	if locked:
+	if locked or capacity <= 0:
 		message = "DOOR CLOSED"
-	elif not is_exit and capacity <= 0:
-		message = "DOOR CLOSED"
-	elif not is_exit and remaining <= 0:
+	elif remaining <= 0:
 		message = "NO PLACES LEFT"
 	elif player_points < cost:
 		message = "NOT ENOUGH POINTS  (NEED %d, HAVE %d)" % [cost, player_points]
-	elif is_exit:
-		usable = true
-		message = "THIS DOOR LEADS OUT OF THE BUILDING"
-		message_colour = UIStyle.AMBER
 	elif player_points - cost <= 0:
 		usable = true
 		message = "WARNING: THIS LEAVES YOU AT 0 POINTS"
@@ -67,10 +59,10 @@ func show_for_door(info: Dictionary, player_points: int) -> void:
 
 	key_label.text = _key_text()
 	key_label.add_theme_color_override("font_color", UIStyle.AMBER if usable else UIStyle.TEXT_DISABLED)
-	action_label.text = ("EXIT THE BUILDING" if is_exit else "PASS THROUGH") if usable else "UNAVAILABLE"
+	action_label.text = "PASS THROUGH" if usable else "UNAVAILABLE"
 	action_label.add_theme_color_override("font_color", UIStyle.TEXT if usable else UIStyle.TEXT_DISABLED)
 	cost_label.text = "COST  %02d PTS" % cost
-	capacity_label.text = "EXIT" if is_exit else "PLACES  %02d / %02d" % [remaining, capacity]
+	capacity_label.text = "PLACES  %02d / %02d" % [remaining, capacity]
 	status_label.text = message
 	status_label.add_theme_color_override("font_color", message_colour)
 

@@ -1,0 +1,94 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/hud/elimination_screen.gd" id="1_elim"]
+
+[node name="EliminationScreen" type="Control"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_elim")
+
+[node name="Scrim" type="ColorRect" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.04, 0.04, 0.05, 0.6)
+
+[node name="Band" type="ColorRect" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 13
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_top = -120.0
+offset_bottom = 120.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.043, 0.047, 0.051, 0.94)
+
+[node name="LineTop" type="ColorRect" parent="Band"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 2.0
+grow_horizontal = 2
+mouse_filter = 2
+color = Color(0.84, 0.22, 0.17, 1)
+
+[node name="LineBottom" type="ColorRect" parent="Band"]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -2.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+color = Color(0.84, 0.22, 0.17, 1)
+
+[node name="VBox" type="VBoxContainer" parent="Band"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+alignment = 1
+
+[node name="TitleLabel" type="Label" parent="Band/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelDisplay"
+theme_override_colors/font_color = Color(0.84, 0.22, 0.17, 1)
+theme_override_font_sizes/font_size = 80
+text = "ELIMINATED"
+horizontal_alignment = 1
+
+[node name="ReasonLabel" type="Label" parent="Band/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelTitle"
+text = "YOU RAN OUT OF POINTS"
+horizontal_alignment = 1
+
+[node name="FinalLabel" type="Label" parent="Band/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelMuted"
+text = "FINAL POINTS  00"
+horizontal_alignment = 1

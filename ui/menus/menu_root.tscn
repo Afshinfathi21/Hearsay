@@ -1,0 +1,37 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://ui/menus/menu_root.gd" id="1_root"]
+[ext_resource type="PackedScene" path="res://ui/menus/main_menu.tscn" id="2_main"]
+[ext_resource type="PackedScene" path="res://ui/menus/lobby_menu.tscn" id="3_lobby"]
+[ext_resource type="PackedScene" path="res://ui/menus/settings_menu.tscn" id="4_settings"]
+[ext_resource type="PackedScene" path="res://ui/menus/loading_screen.tscn" id="5_loading"]
+[ext_resource type="PackedScene" path="res://ui/menus/match_results.tscn" id="6_results"]
+[ext_resource type="PackedScene" path="res://ui/menus/connection_overlay.tscn" id="7_conn"]
+
+[node name="MenuRoot" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_root")
+
+[node name="MainMenu" parent="." instance=ExtResource("2_main")]
+unique_name_in_owner = true
+
+[node name="LobbyMenu" parent="." instance=ExtResource("3_lobby")]
+unique_name_in_owner = true
+
+[node name="SettingsMenu" parent="." instance=ExtResource("4_settings")]
+unique_name_in_owner = true
+
+[node name="LoadingScreen" parent="." instance=ExtResource("5_loading")]
+unique_name_in_owner = true
+
+[node name="MatchResults" parent="." instance=ExtResource("6_results")]
+unique_name_in_owner = true
+
+[node name="ConnectionOverlay" parent="." instance=ExtResource("7_conn")]
+unique_name_in_owner = true

@@ -21,6 +21,7 @@ var _had_door := false
 
 
 func _ready() -> void:
+	add_to_group("hitscan")
 	_ensure_interact_action()
 
 	# The player: the scene root this node is saved in, or the node in group "player".

@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="Theme" path="res://ui/theme/game_theme.tres" id="1_theme"]
 [ext_resource type="Script" path="res://ui/hud/game_hud.gd" id="2_hud"]
@@ -6,8 +6,16 @@
 [ext_resource type="PackedScene" path="res://ui/hud/player_list.tscn" id="4_list"]
 [ext_resource type="PackedScene" path="res://ui/hud/local_player_panel.tscn" id="5_local"]
 [ext_resource type="PackedScene" path="res://ui/hud/door_prompt.tscn" id="6_prompt"]
+[ext_resource type="PackedScene" path="res://ui/hud/transfer_panel.tscn" id="7_transfer"]
+[ext_resource type="PackedScene" path="res://ui/hud/notification_feed.tscn" id="8_feed"]
+[ext_resource type="PackedScene" path="res://ui/hud/screen_edge_flash.tscn" id="9_flash"]
+[ext_resource type="PackedScene" path="res://ui/hud/elimination_screen.tscn" id="10_elim"]
+[ext_resource type="PackedScene" path="res://ui/hud/spectator_bar.tscn" id="11_spectator"]
+[ext_resource type="PackedScene" path="res://ui/hud/victory_screen.tscn" id="12_victory"]
+[ext_resource type="PackedScene" path="res://ui/menus/pause_menu.tscn" id="13_pause"]
+[ext_resource type="PackedScene" path="res://ui/menus/connection_overlay.tscn" id="14_conn"]
 
-[node name="GameHUD" type="Control"]
+[node name="GameHUD" type="Control" groups=["hud"]]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -17,6 +25,9 @@ grow_vertical = 2
 mouse_filter = 2
 theme = ExtResource("1_theme")
 script = ExtResource("2_hud")
+
+[node name="EdgeFlash" parent="." instance=ExtResource("9_flash")]
+unique_name_in_owner = true
 
 [node name="Safe" type="MarginContainer" parent="."]
 layout_mode = 1
@@ -77,3 +88,44 @@ offset_right = 160.0
 offset_bottom = 90.0
 grow_horizontal = 2
 grow_vertical = 1
+
+[node name="TransferPanel" parent="." instance=ExtResource("7_transfer")]
+unique_name_in_owner = true
+
+[node name="NotificationFeed" parent="Safe/Layout" instance=ExtResource("8_feed")]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -340.0
+grow_horizontal = 0
+grow_vertical = 0
+
+[node name="SpectatorBar" parent="Safe/Layout" instance=ExtResource("11_spectator")]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -210.0
+offset_right = 210.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="EliminationScreen" parent="." instance=ExtResource("10_elim")]
+unique_name_in_owner = true
+
+[node name="VictoryScreen" parent="." instance=ExtResource("12_victory")]
+unique_name_in_owner = true
+
+[node name="PauseMenu" parent="." instance=ExtResource("13_pause")]
+unique_name_in_owner = true
+
+[node name="ConnectionOverlay" parent="." instance=ExtResource("14_conn")]
+unique_name_in_owner = true
+banner_top = 176.0

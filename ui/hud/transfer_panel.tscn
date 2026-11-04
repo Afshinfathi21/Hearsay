@@ -1,0 +1,171 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://ui/hud/transfer_panel.gd" id="1_panel"]
+[ext_resource type="PackedScene" path="res://ui/hud/transfer_target_row.tscn" id="2_row"]
+
+[node name="TransferPanel" type="Control"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_panel")
+row_scene = ExtResource("2_row")
+
+[node name="Scrim" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.04, 0.04, 0.05, 0.72)
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="Center"]
+custom_minimum_size = Vector2(460, 0)
+layout_mode = 2
+theme_type_variation = &"AmberPanel"
+
+[node name="VBox" type="VBoxContainer" parent="Center/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Header" type="HBoxContainer" parent="Center/Panel/VBox"]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="Center/Panel/VBox/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"LabelTitle"
+text = "TRANSFER POINTS"
+
+[node name="BalanceLabel" type="Label" parent="Center/Panel/VBox/Header"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"LabelAmber"
+text = "YOU HAVE 10"
+
+[node name="HSeparator" type="HSeparator" parent="Center/Panel/VBox"]
+layout_mode = 2
+
+[node name="SelectCaption" type="Label" parent="Center/Panel/VBox"]
+layout_mode = 2
+theme_type_variation = &"LabelCaption"
+text = "GIVE TO"
+
+[node name="Rows" type="VBoxContainer" parent="Center/Panel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="AmountCaption" type="Label" parent="Center/Panel/VBox"]
+layout_mode = 2
+theme_type_variation = &"LabelCaption"
+text = "AMOUNT"
+
+[node name="AmountRow" type="HBoxContainer" parent="Center/Panel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="MinusButton" type="Button" parent="Center/Panel/VBox/AmountRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+focus_mode = 0
+text = "-"
+
+[node name="AmountLabel" type="Label" parent="Center/Panel/VBox/AmountRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(90, 0)
+layout_mode = 2
+theme_type_variation = &"LabelNumber"
+text = "01"
+horizontal_alignment = 1
+
+[node name="PlusButton" type="Button" parent="Center/Panel/VBox/AmountRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+focus_mode = 0
+text = "+"
+
+[node name="MaxButton" type="Button" parent="Center/Panel/VBox/AmountRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(72, 48)
+layout_mode = 2
+focus_mode = 0
+text = "MAX"
+
+[node name="HSeparator2" type="HSeparator" parent="Center/Panel/VBox"]
+layout_mode = 2
+
+[node name="YouLine" type="HBoxContainer" parent="Center/Panel/VBox"]
+layout_mode = 2
+
+[node name="YouCaption" type="Label" parent="Center/Panel/VBox/YouLine"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"LabelMuted"
+text = "YOU"
+
+[node name="YouValueLabel" type="Label" parent="Center/Panel/VBox/YouLine"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelMono"
+text = "10  →  09"
+
+[node name="TargetLine" type="HBoxContainer" parent="Center/Panel/VBox"]
+layout_mode = 2
+
+[node name="TargetNameLabel" type="Label" parent="Center/Panel/VBox/TargetLine"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"LabelMuted"
+text = "PLAYER"
+
+[node name="TargetValueLabel" type="Label" parent="Center/Panel/VBox/TargetLine"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelMono"
+text = "06  →  07"
+
+[node name="WarningLabel" type="Label" parent="Center/Panel/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+autowrap_mode = 3
+
+[node name="Buttons" type="HBoxContainer" parent="Center/Panel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="CancelButton" type="Button" parent="Center/Panel/VBox/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+focus_mode = 0
+text = "CANCEL  [ESC]"
+
+[node name="ConfirmButton" type="Button" parent="Center/Panel/VBox/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+focus_mode = 0
+theme_type_variation = &"ButtonPrimary"
+text = "CONFIRM  [ENTER]"

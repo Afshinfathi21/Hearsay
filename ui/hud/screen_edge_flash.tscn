@@ -1,0 +1,25 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://ui/hud/screen_edge_flash.gd" id="1_flash"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_frame"]
+resource_local_to_scene = true
+draw_center = false
+border_width_left = 10
+border_width_top = 10
+border_width_right = 10
+border_width_bottom = 10
+border_color = Color(0.84, 0.22, 0.17, 1)
+anti_aliasing = false
+
+[node name="ScreenEdgeFlash" type="Panel"]
+modulate = Color(1, 1, 1, 0)
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_frame")
+script = ExtResource("1_flash")

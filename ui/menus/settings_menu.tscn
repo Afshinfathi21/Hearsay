@@ -1,0 +1,219 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://ui/menus/settings_menu.gd" id="1_menu"]
+[ext_resource type="PackedScene" path="res://ui/menus/setting_slider.tscn" id="2_slider"]
+
+[node name="SettingsMenu" type="Control"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_menu")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.043, 0.047, 0.051, 0.97)
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="Center"]
+custom_minimum_size = Vector2(720, 0)
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="Center/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="TitleLabel" type="Label" parent="Center/Panel/VBox"]
+layout_mode = 2
+theme_type_variation = &"LabelTitle"
+text = "SETTINGS"
+
+[node name="Tabs" type="HBoxContainer" parent="Center/Panel/VBox"]
+layout_mode = 2
+
+[node name="PlayerTab" type="Button" parent="Center/Panel/VBox/Tabs"]
+unique_name_in_owner = true
+layout_mode = 2
+toggle_mode = true
+button_pressed = true
+text = "PLAYER"
+
+[node name="AudioTab" type="Button" parent="Center/Panel/VBox/Tabs"]
+unique_name_in_owner = true
+layout_mode = 2
+toggle_mode = true
+text = "AUDIO"
+
+[node name="GraphicsTab" type="Button" parent="Center/Panel/VBox/Tabs"]
+unique_name_in_owner = true
+layout_mode = 2
+toggle_mode = true
+text = "GRAPHICS"
+
+[node name="HSeparator" type="HSeparator" parent="Center/Panel/VBox"]
+layout_mode = 2
+
+[node name="Pages" type="VBoxContainer" parent="Center/Panel/VBox"]
+custom_minimum_size = Vector2(0, 200)
+layout_mode = 2
+
+[node name="PlayerPage" type="VBoxContainer" parent="Center/Panel/VBox/Pages"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="AudioPage" type="VBoxContainer" parent="Center/Panel/VBox/Pages"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="GraphicsPage" type="VBoxContainer" parent="Center/Panel/VBox/Pages"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="NameRow" type="HBoxContainer" parent="Center/Panel/VBox/Pages/PlayerPage"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="NameRowLabel" type="Label" parent="Center/Panel/VBox/Pages/PlayerPage/NameRow"]
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+theme_type_variation = &"LabelMuted"
+text = "NAME"
+
+[node name="NameEdit" type="LineEdit" parent="Center/Panel/VBox/Pages/PlayerPage/NameRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+max_length = 16
+
+[node name="SensitivitySlider" parent="Center/Panel/VBox/Pages/PlayerPage" instance=ExtResource("2_slider")]
+unique_name_in_owner = true
+layout_mode = 2
+label_text = "Mouse sensitivity"
+min_value = 0.0005
+max_value = 0.006
+step = 0.0001
+as_percent = false
+display_scale = 1000.0
+
+[node name="InvertRow" type="HBoxContainer" parent="Center/Panel/VBox/Pages/PlayerPage"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="InvertRowLabel" type="Label" parent="Center/Panel/VBox/Pages/PlayerPage/InvertRow"]
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+theme_type_variation = &"LabelMuted"
+text = "INVERT LOOK (Y)"
+
+[node name="InvertButton" type="Button" parent="Center/Panel/VBox/Pages/PlayerPage/InvertRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(90, 0)
+layout_mode = 2
+toggle_mode = true
+text = "OFF"
+
+[node name="MasterSlider" parent="Center/Panel/VBox/Pages/AudioPage" instance=ExtResource("2_slider")]
+unique_name_in_owner = true
+layout_mode = 2
+label_text = "Master volume"
+
+[node name="MusicSlider" parent="Center/Panel/VBox/Pages/AudioPage" instance=ExtResource("2_slider")]
+unique_name_in_owner = true
+layout_mode = 2
+label_text = "Music volume"
+
+[node name="SfxSlider" parent="Center/Panel/VBox/Pages/AudioPage" instance=ExtResource("2_slider")]
+unique_name_in_owner = true
+layout_mode = 2
+label_text = "Effects volume"
+
+[node name="WindowRow" type="HBoxContainer" parent="Center/Panel/VBox/Pages/GraphicsPage"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="WindowRowLabel" type="Label" parent="Center/Panel/VBox/Pages/GraphicsPage/WindowRow"]
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+theme_type_variation = &"LabelMuted"
+text = "WINDOW MODE"
+
+[node name="WindowOption" type="OptionButton" parent="Center/Panel/VBox/Pages/GraphicsPage/WindowRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="VsyncRow" type="HBoxContainer" parent="Center/Panel/VBox/Pages/GraphicsPage"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="VsyncRowLabel" type="Label" parent="Center/Panel/VBox/Pages/GraphicsPage/VsyncRow"]
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+theme_type_variation = &"LabelMuted"
+text = "VSYNC"
+
+[node name="VsyncButton" type="Button" parent="Center/Panel/VBox/Pages/GraphicsPage/VsyncRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(90, 0)
+layout_mode = 2
+toggle_mode = true
+text = "ON"
+
+[node name="MsaaRow" type="HBoxContainer" parent="Center/Panel/VBox/Pages/GraphicsPage"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="MsaaRowLabel" type="Label" parent="Center/Panel/VBox/Pages/GraphicsPage/MsaaRow"]
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+theme_type_variation = &"LabelMuted"
+text = "ANTI-ALIASING (MSAA)"
+
+[node name="MsaaOption" type="OptionButton" parent="Center/Panel/VBox/Pages/GraphicsPage/MsaaRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="HSeparator2" type="HSeparator" parent="Center/Panel/VBox"]
+layout_mode = 2
+
+[node name="Buttons" type="HBoxContainer" parent="Center/Panel/VBox"]
+layout_mode = 2
+
+[node name="ResetButton" type="Button" parent="Center/Panel/VBox/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "RESET TO DEFAULTS"
+
+[node name="Spacer" type="Control" parent="Center/Panel/VBox/Buttons"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="BackButton" type="Button" parent="Center/Panel/VBox/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(160, 0)
+layout_mode = 2
+theme_type_variation = &"ButtonPrimary"
+text = "BACK"
