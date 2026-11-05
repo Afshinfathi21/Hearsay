@@ -62,6 +62,11 @@ func _run() -> void:
 	await t_locked_door()
 	await t_two_reservations_share_door()
 	await t_mid_crossing_is_protected()
+	await t_cross_from_other_side()
+	await t_closes_immediately()
+	await t_two_physical_bodies()
+	await t_spam_interact()
+	await t_freed_reservation_holder()
 
 	print("\n%d passed, %d failed" % [passed_checks, failed_checks])
 	quit(1 if failed_checks > 0 else 0)
@@ -342,6 +347,92 @@ func t_mid_crossing_is_protected() -> void:
 	check(await wait_until(func() -> bool: return not door.is_open, 4.0), "door closes after the player finished crossing")
 
 
+func t_cross_from_other_side() -> void:
+	_title("crossing in the opposite direction")
+	await reset_state()
+	await place(-1.0, 2.5)
+	door.interact(player)
+	await wait_until(func() -> bool: return door.is_open, 4.0)
+	var reached := await walk(-1.0, 2.5)
+	await frames(5)
+	check(reached and solo._points == 9 and passed_of(door) == 1, "a crossing from the back side is detected and charged once")
+
+
+func t_closes_immediately() -> void:
+	_title("the door starts closing the moment the last reserved player is through")
+	await reset_state()
+	var done := [false]
+	door.passage_completed.connect(func(_b: Node3D) -> void: done[0] = true, CONNECT_ONE_SHOT)
+	await place(1.0, 2.5)
+	door.interact(player)
+	await wait_until(func() -> bool: return door.is_open, 4.0)
+	var dir := -door.global_transform.basis.z
+	for i in 300:
+		player.move_and_collide(dir * 3.0 / 60.0)
+		await physics_frame
+		if done[0]:
+			break
+	await physics_frame
+	check(done[0], "the crossing completed")
+	check(not door._target_open and door._anim.is_playing(), "the closing animation is already running one frame later")
+
+
+func t_two_physical_bodies() -> void:
+	_title("two physical bodies at once: the reserved one passes, the other is stopped")
+	await reset_state()
+	var npc := make_body()
+	var holder := make_dummy()                 # keeps the door open for the whole test
+	var back := door.global_transform.basis.z
+	var y := door.global_position.y + HALF_HEIGHT + 0.05
+	npc.global_position = Vector3(door.global_position.x, y, door.global_position.z) + back * 2.0
+	await place(1.0, 4.0)                      # the player stands 2 m behind the other body
+	var saved := door.passage_validator
+	door.passage_validator = func(_b: Node3D, _d: StandardDoor) -> bool: return true
+	door.reserve_passage(npc)
+	door.reserve_passage(holder)
+	await wait_until(func() -> bool: return door.is_open, 4.0)
+	for i in 240:                              # both walk at 2 m/s towards and through the door
+		npc.move_and_collide(-back * 2.0 / 60.0)
+		player.move_and_collide(-back * 2.0 / 60.0)
+		await physics_frame
+	await frames(5)
+	check(passed_of(door) == 1 and door.to_local(npc.global_position).z < -1.0, "the reserved body crossed")
+	check(door.is_open, "the door is still open (another reservation is held)")
+	check(door.to_local(player.global_position).z > 0.0, "the unreserved player was stopped at the OPEN door")
+	check(solo._points == 10, "the unreserved player was not charged")
+	for i in 120:                              # the crossed body tries to go back
+		npc.move_and_collide(back * 2.0 / 60.0)
+		await physics_frame
+	check(door.to_local(npc.global_position).z < 0.0, "after its crossing the same body is blocked again (exception removed)")
+	door.passage_validator = saved
+
+
+func t_spam_interact() -> void:
+	_title("reserve / cancel spam")
+	await reset_state()
+	await place(1.0, 2.5)
+	for i in 11:
+		door.interact(player)
+		await frames(2)
+	check(door.reserved == 1, "an odd number of presses leaves one reservation")
+	door.interact(player)
+	check(door.reserved == 0 and door.available == 2 and solo._pending_door == null, "the next press cancels it: no leftovers anywhere")
+	check(await wait_until(func() -> bool: return not door.is_open, 5.0), "the door ends up closed")
+	check(solo._points == 10, "no points moved")
+
+
+func t_freed_reservation_holder() -> void:
+	_title("a player that disappears while holding a reservation")
+	await reset_state()
+	door.reservation_timeout = 1.0
+	var ghost := make_dummy()
+	door.reserve_passage(ghost)
+	ghost.free()
+	await wait_seconds(1.6)
+	check(door.reserved == 0 and door.available == 2, "the orphaned reservation is cleaned up")
+	check(await wait_until(func() -> bool: return not door.is_open, 5.0), "the door closes")
+
+
 # ---- helpers ---------------------------------------------------------------------------------
 func check(cond: bool, label: String) -> void:
 	if cond:
@@ -405,6 +496,20 @@ func passed_of(d: StandardDoor) -> int:
 	return int(v) if v != null else 0
 
 
+## A second physical body (same capsule as the player) so two bodies can use the doorway at once.
+func make_body() -> CharacterBody3D:
+	var body := CharacterBody3D.new()
+	var shape := CollisionShape3D.new()
+	var capsule := CapsuleShape3D.new()
+	capsule.radius = 0.42
+	capsule.height = 1.88
+	shape.shape = capsule
+	body.add_child(shape)
+	level.add_child(body)
+	_dummies.append(body)
+	return body
+
+
 func make_dummy() -> Node3D:
 	var d := Node3D.new()
 	level.add_child(d)
@@ -415,8 +520,9 @@ func make_dummy() -> Node3D:
 ## Back to a known state: no reservations, door closed, 10 points.
 func reset_state() -> void:
 	for d in _dummies:
-		door.release_passage(d)
-		d.queue_free()
+		if is_instance_valid(d):
+			door.release_passage(d)
+			d.queue_free()
 	_dummies.clear()
 	door.release_passage(player)
 	if door.has_method("reset_round"):

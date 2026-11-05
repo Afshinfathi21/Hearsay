@@ -30,6 +30,8 @@ const ZONE_MID := 1
 const ZONE_FAR := 2                         # last third: close to the exit
 ## Chance multiplier for a penalty in each zone (times penalty_fraction): mild near the start, harsh near the exit.
 const ZONE_DENSITY := [0.4, 1.0, 1.4]
+## Chance multiplier for an optional mini-game in each zone (times minigame_fraction): mostly the middle of the way.
+const MINIGAME_DENSITY := [0.5, 1.0, 0.8]
 
 const N := RoomGrid.Dir.N
 const E := RoomGrid.Dir.E
@@ -64,6 +66,7 @@ const PROPS := {
 @export var point_budget := 10               # points a player starts with
 @export var door_cost := 1                   # points every ordinary door costs
 @export var min_route_margin := 2            # points that must still be left after the cheapest route to the exit
+@export_range(0.0, 1.0) var minigame_fraction := 0.12   # share of rooms with an OPTIONAL mini-game (reward item for a win)
 @export var draw_distance := 35.0            # doors, monitors and props are hidden beyond this many metres
 
 
@@ -76,6 +79,7 @@ class RoomData extends RefCounted:
 	var is_start := false
 	var is_exit := false
 	var zone := 0                            # ZONE_NEAR / ZONE_MID / ZONE_FAR (progress from the start to the exit)
+	var minigame := false                    # an optional mini-game is offered here; never needed to finish the level
 	var dist_start := 0                      # doors from the start room
 	var dist_exit := 0                       # doors from the exit room
 	var label := ""                          # e.g. "C4"
@@ -130,6 +134,7 @@ func _ready() -> void:
 	_choose_exit()
 	_choose_start()
 	_assign_penalties()
+	_assign_minigames()
 	var links := _build_links()
 	var cells: Array[Vector2i] = []
 	for rd in room_list:
@@ -159,13 +164,20 @@ func get_room_at_position(world_pos: Vector3) -> RoomData:
 	return rooms.get(_room_of(c))
 
 
+## World position of the middle of a room's floor (the walking surface), for placing things inside a room.
+func get_room_floor_center(rd: RoomData) -> Vector3:
+	var first: Vector2i = rd.cells[0]
+	var centre: Vector3 = _gm.map_to_local(Vector3i(first.x, 0, first.y)) + Vector3(room_cells - 1, 0, room_cells - 1) * 2.0
+	return _gm.to_global(centre + Vector3(0, 0.2, 0))                # 0.2 = the floor slab
+
+
 ## Plain data describing the whole building (for a minimap, a debug view, or saving). Safe to serialise.
 func get_layout() -> Dictionary:
 	var rs := []
 	for rd in room_list:
 		rs.append({"coord": [rd.coord.x, rd.coord.y], "label": rd.label, "kind": rd.kind, "doors": rd.doors,
 			"penalty": rd.penalty, "amount": rd.amount, "start": rd.is_start, "exit": rd.is_exit,
-			"zone": rd.zone, "dist_start": rd.dist_start, "dist_exit": rd.dist_exit})
+			"zone": rd.zone, "dist_start": rd.dist_start, "dist_exit": rd.dist_exit, "minigame": rd.minigame})
 	var ds := []
 	for r in door_records:
 		ds.append({"a": [r.room_a.x, r.room_a.y], "b": [r.room_b.x, r.room_b.y], "exit": r.is_exit})
@@ -339,6 +351,20 @@ func _assign_penalties() -> void:
 			continue
 		_roll_effect(rd)
 	_validate_effects()
+
+
+## Optional mini-games. They never change the route guarantee (winning only gives an item), so they are placed
+## after the effects are validated, with their own rng so the rest of the building stays exactly as it was.
+## Never in the start room, the exit room or a lockdown room (nobody should be stuck in a room to play).
+func _assign_minigames() -> void:
+	var mini_rng := RandomNumberGenerator.new()
+	mini_rng.seed = hash("minigames:%d" % rng.seed)
+	for rd in room_list:
+		rd.minigame = false
+		if rd.is_start or rd.is_exit or rd.penalty == PENALTY_SKIP_ROUND:
+			continue
+		var chance := clampf(minigame_fraction * MINIGAME_DENSITY[rd.zone], 0.0, 1.0)
+		rd.minigame = mini_rng.randf() < chance
 
 
 func _roll_effect(rd: RoomData) -> void:

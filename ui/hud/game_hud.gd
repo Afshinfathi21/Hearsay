@@ -22,6 +22,8 @@ extends Control
 ##   notify(event)                                  see notification_feed.gd
 ##   show_elimination({"reason": "...", "points": 0, "spectate": true})
 ##   show_victory(info)                             see victory_screen.gd
+##   set_inventory(items, armed_names)              the reward items, see inventory_bar.gd
+##   set_minigame(state)                            the running mini-game, see mini_game_panel.gd ({} hides it)
 
 ## The local player confirmed a transfer. Send it to the host; it validates and applies it.
 signal transfer_requested(target_id: int, amount: int)
@@ -33,6 +35,8 @@ signal modal_closed
 signal spectate_target_changed(player_id: int)
 ## The player pressed Continue on the victory screen.
 signal victory_continue
+## The local player wants to use the item in this inventory slot (0-based). The host decides.
+signal item_use_requested(slot: int)
 ## From the pause menu.
 signal leave_match_requested
 signal quit_requested
@@ -41,6 +45,13 @@ signal retry_connection_requested
 signal connection_lost_menu_requested
 
 @export var starting_points := 10
+
+@export_group("Parts (turn off what a level does not use)")
+@export var show_round_info := true
+@export var show_player_list := true
+@export var show_local_panel := true
+## false = the transfer panel (T) never opens in this level.
+@export var allow_transfers := true
 
 @onready var round_info: RoundInfo = %RoundInfo
 @onready var local_panel: LocalPlayerPanel = %LocalPlayerPanel
@@ -55,12 +66,26 @@ signal connection_lost_menu_requested
 @onready var pause_menu: PauseMenu = %PauseMenu
 @onready var connection_overlay: ConnectionOverlay = %ConnectionOverlay
 
+var inventory_bar: InventoryBar
+var mini_game_panel: MiniGamePanel
+
+const DARK_ALPHA := 0.45                    # how much the screen darkens while the mini-game room is dark
+
+var _darkness: ColorRect
+var _dark_tween: Tween
+
 var _local_points := 0
 var _modal := false
 var _spectate_after_elimination := true
 
 
 func _ready() -> void:
+	_make_inventory_bar()
+	_make_mini_game_ui()
+	round_info.visible = show_round_info
+	player_list.visible = show_player_list
+	local_panel.visible = show_local_panel
+	transfer_panel.enabled = allow_transfers
 	local_panel.set_max_points(starting_points)
 	transfer_panel.transfer_requested.connect(transfer_requested.emit)
 	transfer_panel.opened.connect(_refresh_modal)
@@ -80,6 +105,59 @@ func _ready() -> void:
 	connection_overlay.blocking_changed.connect(_refresh_modal)
 	connection_overlay.retry_requested.connect(retry_connection_requested.emit)
 	connection_overlay.menu_requested.connect(connection_lost_menu_requested.emit)
+
+
+## The reward items the host says the local player holds. See inventory_bar.gd.
+func set_inventory(items: Array, armed_names: Array = []) -> void:
+	inventory_bar.set_items(items, armed_names)
+
+
+## The state of the mini-game the local player is in (see mini_game_panel.gd); {} when there is none.
+## While the room is dark the screen darkens; a "flash" entry flashes the screen edge red.
+func set_minigame(state: Dictionary) -> void:
+	if state.is_empty():
+		mini_game_panel.clear()
+		_fade_darkness(0.0)
+		return
+	mini_game_panel.set_state(state)
+	_fade_darkness(DARK_ALPHA if str(state.get("phase", "")) == "dark" else 0.0)
+	if state.get("flash", false):
+		edge_flash.flash(UIStyle.RED)
+
+
+func _fade_darkness(alpha: float) -> void:
+	if _dark_tween != null and _dark_tween.is_valid():
+		_dark_tween.kill()
+	_dark_tween = create_tween()
+	_dark_tween.tween_property(_darkness, "color:a", alpha, 0.15)
+
+
+func _make_mini_game_ui() -> void:
+	_darkness = ColorRect.new()
+	_darkness.name = "MiniGameDarkness"
+	_darkness.color = Color(0.0, 0.0, 0.0, 0.0)
+	_darkness.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_darkness)
+	_darkness.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	move_child(_darkness, 0)                 # behind every other HUD part
+	mini_game_panel = MiniGamePanel.new()
+	mini_game_panel.name = "MiniGamePanel"
+	add_child(mini_game_panel)
+	mini_game_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
+	mini_game_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	mini_game_panel.offset_top = UIStyle.SCREEN_MARGIN + 88    # below the round info box
+
+
+func _make_inventory_bar() -> void:
+	inventory_bar = InventoryBar.new()
+	inventory_bar.name = "InventoryBar"
+	var layout := get_node_or_null("Safe/Layout") as Control
+	(layout if layout != null else self).add_child(inventory_bar)
+	inventory_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE)
+	inventory_bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	inventory_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	inventory_bar.offset_bottom = -UIStyle.SP_4
+	inventory_bar.use_requested.connect(item_use_requested.emit)
 
 
 func apply_state(state: Dictionary) -> void:
@@ -125,6 +203,8 @@ func show_elimination(info: Dictionary) -> void:
 	_spectate_after_elimination = info.get("spectate", true)
 	transfer_panel.close()
 	door_prompt.hide_prompt()
+	inventory_bar.hide()
+	set_minigame({})
 	edge_flash.flash(UIStyle.RED)
 	elimination_screen.play(str(info.get("reason", "YOU RAN OUT OF POINTS")), info.get("points", 0))
 	_refresh_modal()
@@ -134,6 +214,8 @@ func show_elimination(info: Dictionary) -> void:
 func show_victory(info: Dictionary) -> void:
 	transfer_panel.close()
 	door_prompt.hide_prompt()
+	inventory_bar.hide()
+	set_minigame({})
 	victory_screen.show_victory(info)
 	_refresh_modal()
 
@@ -170,6 +252,7 @@ func _refresh_modal() -> void:
 	var now := transfer_panel.is_open or victory_screen.is_open \
 		or elimination_screen.is_playing or spectator_bar.is_active \
 		or pause_menu.is_open or connection_overlay.is_blocking
+	inventory_bar.set_enabled(not now)
 	if now == _modal:
 		return
 	_modal = now

@@ -1,0 +1,2428 @@
+diff --git a/Gameplay/MiniGames/dont_blink_game.gd b/Gameplay/MiniGames/dont_blink_game.gd
+new file mode 100644
+index 0000000..e6102f5
+--- /dev/null
++++ b/Gameplay/MiniGames/dont_blink_game.gd
+@@ -0,0 +1,193 @@
++class_name DontBlinkGame
++extends RefCounted
++## The rules of the "Don't Blink" mini-game. Plain logic: no nodes, no UI, no physics. The room (presentation)
++## feeds it the players' speeds every frame and shows what it decides, so the host can own an instance later.
++##
++## A giant eye watches the room. The light flashes at random:
++##   light ON  (the eye WATCHES)  everyone must stand completely still
++##   light OFF (the eye is shut)  everyone may move toward the exit
++## A player who moves while watched is detected: the danger level goes up for EVERYONE. At maximum danger every
++## player who has not reached the exit loses. A player who reaches the exit wins at that moment and is safe,
++## whatever the others do afterwards. Players may walk out of the room at any time (they just stop taking part).
++##
++## Flow: join() -> countdown -> running (starts dark) -> ended. Call tick() every frame while it is not IDLE.
++
++signal watching_changed(watching: bool)
++signal player_detected(player_id: int)
++signal danger_changed(level: int)
++signal player_won(player_id: int)
++signal player_lost(player_id: int)
++signal ended
++
++enum State { IDLE, COUNTDOWN, RUNNING, ENDED }
++
++## Danger level at which everybody still playing loses.
++var max_danger := 5
++## Speed (metres per second) above which a player counts as moving. Turning the camera is not moving.
++var still_speed := 0.15
++## Seconds after the light comes on before moving is punished, so players have time to stop.
++var reaction_grace := 0.5
++## Seconds between the first player joining and the first (dark) phase. Others may join meanwhile.
++var countdown_time := 3.0
++## Seconds before everybody still playing loses. 0 = no time limit.
++var time_limit := 0.0
++## (min, max) seconds the eye watches / the room is dark. Each phase picks a random value in range.
++var watch_time := Vector2(1.5, 3.0)
++var dark_time := Vector2(2.0, 4.5)
++## Every danger level makes the eye watch this much longer and the dark phases this much shorter.
++var watch_growth := 0.12
++var dark_shrink := 0.10
++var rng := RandomNumberGenerator.new()
++
++var state := State.IDLE
++var watching := false
++var danger := 0
++var elapsed := 0.0
++
++var _players := {}                       # player id -> "playing" | "won" | "lost" | "left"
++var _countdown := 0.0
++var _phase_left := 0.0
++var _watch_elapsed := 0.0
++var _caught := {}                        # players already detected in the current watching phase
++
++
++## A player steps up to take part. Only possible before the first dark phase starts.
++func join(player_id: int) -> bool:
++	if state != State.IDLE and state != State.COUNTDOWN:
++		return false
++	if status_of(player_id) == "playing":
++		return true
++	_players[player_id] = "playing"
++	if state == State.IDLE:
++		state = State.COUNTDOWN
++		_countdown = countdown_time
++	return true
++
++
++## The player stopped taking part (walked out of the room). No result, no penalty.
++func leave(player_id: int) -> void:
++	if status_of(player_id) != "playing":
++		return
++	_players[player_id] = "left"
++	_check_end()
++
++
++## The player reached the exit. Returns true when that counted as a win.
++func finish(player_id: int) -> bool:
++	if state != State.RUNNING or status_of(player_id) != "playing":
++		return false
++	_players[player_id] = "won"
++	player_won.emit(player_id)
++	_check_end()
++	return true
++
++
++## Advance by `delta` seconds. speeds: {player id: speed in m/s} for the players taking part.
++func tick(delta: float, speeds := {}) -> void:
++	if state == State.COUNTDOWN:
++		_countdown -= delta
++		if _countdown <= 0.0:
++			state = State.RUNNING
++			elapsed = 0.0
++			danger = 0
++			_set_watching(false)             # the first phase is dark
++		return
++	if state != State.RUNNING:
++		return
++	elapsed += delta
++	if time_limit > 0.0 and elapsed >= time_limit:
++		_lose_all()
++		return
++	if watching:
++		_watch_elapsed += delta
++		if _watch_elapsed >= reaction_grace:
++			for id in playing_ids():
++				if _caught.has(id) or float(speeds.get(id, 0.0)) <= still_speed:
++					continue
++				_caught[id] = true
++				danger += 1
++				player_detected.emit(id)
++				danger_changed.emit(danger)
++				if danger >= max_danger:
++					_lose_all()
++					return
++	_phase_left -= delta
++	if _phase_left <= 0.0:
++		_set_watching(not watching)
++
++
++func status_of(player_id: int) -> String:
++	return _players.get(player_id, "")
++
++
++func playing_ids() -> Array[int]:
++	var out: Array[int] = []
++	for id in _players:
++		if _players[id] == "playing":
++			out.append(id)
++	return out
++
++
++## Back to the start, ready for a new attempt.
++func reset() -> void:
++	state = State.IDLE
++	watching = false
++	danger = 0
++	elapsed = 0.0
++	_players.clear()
++	_caught.clear()
++	_countdown = 0.0
++	_phase_left = 0.0
++	_watch_elapsed = 0.0
++
++
++## Seconds left in the countdown (0 once running).
++func countdown_left() -> float:
++	return maxf(_countdown, 0.0) if state == State.COUNTDOWN else 0.0
++
++
++## Seconds left before the time limit, or -1 when there is none.
++func time_left() -> float:
++	return maxf(time_limit - elapsed, 0.0) if time_limit > 0.0 and state == State.RUNNING else -1.0
++
++
++## The (min, max) the next watching / dark phase is drawn from at the current danger level.
++func current_watch_range() -> Vector2:
++	return watch_time * (1.0 + watch_growth * danger)
++
++
++func current_dark_range() -> Vector2:
++	return dark_time * maxf(1.0 - dark_shrink * danger, 0.4)
++
++
++func _set_watching(value: bool) -> void:
++	watching = value
++	_caught.clear()
++	_watch_elapsed = 0.0
++	var r := current_watch_range() if value else current_dark_range()
++	_phase_left = rng.randf_range(r.x, r.y)
++	watching_changed.emit(value)
++
++
++func _lose_all() -> void:
++	for id in playing_ids():
++		_players[id] = "lost"
++		player_lost.emit(id)
++	state = State.ENDED
++	watching = false
++	ended.emit()
++
++
++## Nobody is still playing: the game is over (or, when everybody just walked away, simply reset).
++func _check_end() -> void:
++	if state != State.COUNTDOWN and state != State.RUNNING:
++		return
++	if not playing_ids().is_empty():
++		return
++	for id in _players:
++		if _players[id] == "won" or _players[id] == "lost":
++			state = State.ENDED
++			watching = false
++			ended.emit()
++			return
++	reset()
+diff --git a/Gameplay/MiniGames/dont_blink_room.gd b/Gameplay/MiniGames/dont_blink_room.gd
+new file mode 100644
+index 0000000..a0dac6f
+--- /dev/null
++++ b/Gameplay/MiniGames/dont_blink_room.gd
+@@ -0,0 +1,313 @@
++class_name DontBlinkRoom
++extends Node3D
++## The "Don't Blink" mini-game inside one room: a giant eye in the ceiling, a START pad and an EXIT pad, and the
++## room lights that flash with the eye. The rules are in DontBlinkGame; this node only measures how fast the
++## players move, feeds the rules, and shows the outcome. Add it as a child of the building generator, then
++## call setup(). The host (SoloMatch for now) listens to the signals and hands out the reward.
++##
++## How a player plays it: step on the amber START pad (a short countdown begins, others may join), then cross the
++## room to the green EXIT pad. While the eye is open you must not move. A reward (a TRAP SCAN: a hint about one
++## nearby room) is given the moment a player reaches the EXIT pad.
++
++signal player_won(room_label: String, player_id: int)
++signal player_detected(room_label: String, player_id: int)
++## What the HUD should show for the local player: see MiniGamePanel. {} = nothing (hide it).
++signal hud_state_changed(state: Dictionary)
++
++const TITLE := "DON'T BLINK"
++const LOCAL_ID := 1                      # the player on this machine, until the network layer assigns ids
++const CEILING := 3.0                     # interior height above the floor
++const EYE_RADIUS := 1.8
++const EYE_SINK := 1.2                    # the eye's centre is this far into the ceiling (its lowest point stays above head height)
++const PAD_RADIUS := 1.2
++const BOUNDS_MARGIN := 0.3               # beyond the room walls by this much = the player left
++const DARK_LIGHT := 0.2                  # share of the room lights that stays on while the eye is shut
++const WATCH_LIGHT := 2.2                 # the room lights flash this bright while the eye is open
++const TELEPORT_DISTANCE := 2.0           # a jump this big in one frame is a teleport, not movement
++const RESULT_SECONDS := 3.0              # how long the result stays before the room can be played again
++const EVENT_SECONDS := 1.5               # how long "THE EYE SAW YOU" stays on the HUD
++
++var game := DontBlinkGame.new()
++var room_label := ""
++## Set when the reward was handed out: the room stays calm and cannot be played again.
++var claimed := false
++## (body) -> player id, or -1 when the body is not a player. Default: the local player group is id 1.
++var id_resolver := Callable()
++
++var _generator: Node3D
++var _half := 6.0
++var _bodies := {}                        # player id -> the body taking part
++var _last_pos := {}
++var _open := 0.0                         # 0 = eye shut, 1 = eye open
++var _light_mul := 1.0
++var _end_left := 0.0
++var _event_text := ""
++var _event_left := 0.0
++var _flash := false
++var _last_hud_key := ""
++
++var _eye_root: Node3D
++var _look: Node3D
++var _lid_pivot: Node3D
++var _iris_mat: StandardMaterial3D
++var _eye_light: OmniLight3D
++var _room_lights: Array[Dictionary] = []
++var _start_pad := {}
++var _finish_pad := {}
++
++
++## The node must already be in the tree (add_child first). rd: the RoomData of the room.
++func setup(generator: Node3D, rd, seed_value: int) -> void:
++	_generator = generator
++	room_label = rd.label
++	_half = float(generator.room_cells) * RoomGrid.CELL_SIZE.x * 0.5
++	game.rng.seed = seed_value
++	global_position = generator.get_room_floor_center(rd)
++	_build_eye()
++	var corner := _half - 2.4
++	_start_pad = _build_pad("START", Vector3(-corner, 0.0, -corner), UIStyle.AMBER, _on_start_entered)
++	_finish_pad = _build_pad("EXIT", Vector3(corner, 0.0, corner), Color(0.35, 0.9, 0.45), _on_finish_entered)
++	for n in generator.get_children():
++		if n is OmniLight3D:
++			var p: Vector3 = (n as Node3D).global_position - global_position
++			if absf(p.x) <= _half and absf(p.z) <= _half:
++				_room_lights.append({"light": n, "base": (n as OmniLight3D).light_energy})
++	game.player_detected.connect(_on_detected)
++	game.player_won.connect(func(id: int) -> void: player_won.emit(room_label, id))
++	game.ended.connect(func() -> void: _end_left = RESULT_SECONDS)
++
++
++## The reward was handed out: the eye sleeps for good.
++func mark_claimed() -> void:
++	claimed = true
++	game.reset()
++	_bodies.clear()
++	_last_pos.clear()
++	for pad in [_start_pad, _finish_pad]:
++		(pad["label"] as Label3D).text = "DONE"
++		(pad["label"] as Label3D).modulate = UIStyle.TEXT_MUTED
++		((pad["disc"] as MeshInstance3D).material_override as StandardMaterial3D).emission_energy_multiplier = 0.15
++
++
++func _physics_process(delta: float) -> void:
++	if _generator == null:
++		return
++	var speeds := {}
++	for id in _bodies.keys():
++		var body := _bodies[id] as Node3D
++		if not is_instance_valid(body):
++			_drop(id)
++			continue
++		var p := body.global_position
++		if absf(p.x - global_position.x) > _half + BOUNDS_MARGIN or absf(p.z - global_position.z) > _half + BOUNDS_MARGIN:
++			_drop(id)                                    # walked out of the room: no result, no penalty
++			continue
++		var moved := p.distance_to(_last_pos[id])
++		_last_pos[id] = p
++		speeds[id] = 0.0 if moved > TELEPORT_DISTANCE else moved / maxf(delta, 0.0001)
++	game.tick(delta, speeds)
++	if _end_left > 0.0:
++		_end_left -= delta
++		if _end_left <= 0.0:
++			game.reset()
++			_bodies.clear()
++			_last_pos.clear()
++	_event_left = maxf(_event_left - delta, 0.0)
++	_update_visuals(delta)
++	_emit_hud()
++
++
++func _drop(id: int) -> void:
++	_bodies.erase(id)
++	_last_pos.erase(id)
++	game.leave(id)
++
++
++func _id_of(body: Node3D) -> int:
++	if id_resolver.is_valid():
++		return int(id_resolver.call(body))
++	return LOCAL_ID if body.is_in_group("player") else -1
++
++
++func _on_start_entered(body: Node3D) -> void:
++	var id := _id_of(body)
++	if id < 0 or claimed or _end_left > 0.0:
++		return
++	if game.join(id):
++		_bodies[id] = body
++		_last_pos[id] = body.global_position
++
++
++func _on_finish_entered(body: Node3D) -> void:
++	var id := _id_of(body)
++	if id >= 0 and not claimed:
++		game.finish(id)
++
++
++func _on_detected(id: int) -> void:
++	player_detected.emit(room_label, id)
++	_event_text = "THE EYE SAW YOU" if id == LOCAL_ID else "THE EYE SAW SOMEONE"
++	_event_left = EVENT_SECONDS
++	if id == LOCAL_ID:
++		_flash = true
++
++
++# ---- what the HUD shows ------------------------------------------------------------------------------
++func _emit_hud() -> void:
++	var state := _hud_state()
++	var key := str(state)
++	if key == _last_hud_key and not state.get("flash", false):
++		return
++	_last_hud_key = key
++	hud_state_changed.emit(state)
++	_flash = false
++
++
++func _hud_state() -> Dictionary:
++	var status := game.status_of(LOCAL_ID)
++	if status == "" or status == "left":
++		return {}
++	var phase := "countdown"
++	if status == "won" or status == "lost":
++		phase = status
++	elif game.state == DontBlinkGame.State.RUNNING:
++		phase = "watching" if game.watching else "dark"
++	return {"title": TITLE, "phase": phase, "countdown": ceili(game.countdown_left()), "danger": game.danger,
++		"max_danger": game.max_danger, "time_left": snappedf(game.time_left(), 1.0),
++		"event": _event_text if _event_left > 0.0 else "", "flash": _flash}
++
++
++# ---- the eye, the pads, the lights ------------------------------------------------------------------
++func _build_eye() -> void:
++	_eye_root = Node3D.new()
++	_eye_root.name = "Eye"
++	_eye_root.position = Vector3(0.0, CEILING + EYE_SINK, 0.0)
++	add_child(_eye_root)
++
++	var ball := MeshInstance3D.new()
++	var ball_mesh := SphereMesh.new()
++	ball_mesh.radius = EYE_RADIUS
++	ball_mesh.height = EYE_RADIUS * 2.0
++	ball.mesh = ball_mesh
++	ball.material_override = _material(Color(0.93, 0.9, 0.84), Color(0.3, 0.28, 0.25), 0.25, 0.4)
++	_eye_root.add_child(ball)
++
++	_look = Node3D.new()                                 # turns toward the player; the iris is on its far side
++	_eye_root.add_child(_look)
++	_iris_mat = _material(Color(0.9, 0.55, 0.1), Color(1.0, 0.65, 0.12), 0.2, 0.3)
++	_look.add_child(_disc_mesh(EYE_RADIUS * 0.54, 0.3, Vector3(0.0, -EYE_RADIUS * 0.93, 0.0), _iris_mat))
++	_look.add_child(_disc_mesh(EYE_RADIUS * 0.235, 0.35, Vector3(0.0, -EYE_RADIUS * 1.04, 0.0), _material(Color(0.01, 0.01, 0.01), Color.BLACK, 0.0, 0.2)))
++
++	_lid_pivot = Node3D.new()                            # a hemisphere that swings over the eye: the eyelid
++	_eye_root.add_child(_lid_pivot)
++	var lid := MeshInstance3D.new()
++	var lid_mesh := SphereMesh.new()
++	lid_mesh.radius = EYE_RADIUS * 1.22                  # big enough to hide the iris, which bulges out of the eyeball
++	lid_mesh.height = EYE_RADIUS * 1.22
++	lid_mesh.is_hemisphere = true
++	lid.mesh = lid_mesh
++	lid.material_override = _material(Color(0.1, 0.06, 0.06), Color.BLACK, 0.0, 0.9)
++	_lid_pivot.add_child(lid)
++	_lid_pivot.rotation.x = PI                           # dome down = shut
++
++	_eye_light = OmniLight3D.new()
++	_eye_light.position = Vector3(0.0, -EYE_RADIUS - 0.3, 0.0)
++	_eye_light.omni_range = 18.0
++	_eye_light.light_energy = 0.0
++	_eye_root.add_child(_eye_light)
++
++
++func _disc_mesh(radius: float, flat: float, at: Vector3, mat: Material) -> MeshInstance3D:
++	var m := MeshInstance3D.new()
++	var s := SphereMesh.new()
++	s.radius = radius
++	s.height = radius * 2.0
++	m.mesh = s
++	m.scale = Vector3(1.0, flat, 1.0)
++	m.position = at
++	m.material_override = mat
++	return m
++
++
++func _material(albedo: Color, emission: Color, energy: float, rough: float) -> StandardMaterial3D:
++	var m := StandardMaterial3D.new()
++	m.albedo_color = albedo
++	m.roughness = rough
++	m.emission_enabled = energy > 0.0
++	m.emission = emission
++	m.emission_energy_multiplier = energy
++	return m
++
++
++func _build_pad(text: String, at: Vector3, color: Color, on_enter: Callable) -> Dictionary:
++	var root := Node3D.new()
++	root.position = at
++	add_child(root)
++	var cyl := CylinderMesh.new()
++	cyl.top_radius = PAD_RADIUS
++	cyl.bottom_radius = PAD_RADIUS
++	cyl.height = 0.04
++	var disc := MeshInstance3D.new()
++	disc.mesh = cyl
++	disc.position.y = 0.02
++	disc.material_override = _material(color * 0.4, color, 1.4, 0.6)
++	root.add_child(disc)
++	var label := Label3D.new()
++	label.text = text
++	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
++	label.font_size = 72
++	label.pixel_size = 0.0035
++	label.outline_size = 14
++	label.modulate = color
++	label.position.y = 1.5
++	root.add_child(label)
++	var area := Area3D.new()
++	area.collision_layer = 0
++	area.collision_mask = 1
++	area.monitorable = false
++	var shape := CollisionShape3D.new()
++	var cs := CylinderShape3D.new()
++	cs.radius = PAD_RADIUS
++	cs.height = 2.0
++	shape.shape = cs
++	shape.position.y = 1.0
++	area.add_child(shape)
++	root.add_child(area)
++	area.body_entered.connect(on_enter)
++	return {"root": root, "disc": disc, "label": label, "area": area}
++
++
++func _update_visuals(delta: float) -> void:
++	var running := game.state == DontBlinkGame.State.RUNNING
++	_open = move_toward(_open, 1.0 if (running and game.watching) else 0.0, delta * 8.0)
++	_lid_pivot.rotation.x = lerpf(PI, 0.0, _open)
++	var heat := float(game.danger) / float(maxi(game.max_danger, 1))
++	var colour := Color(1.0, 0.65, 0.12).lerp(Color(0.9, 0.08, 0.05), heat)
++	_iris_mat.albedo_color = colour * 0.55
++	_iris_mat.emission = colour
++	_iris_mat.emission_energy_multiplier = 0.2 + 1.3 * _open
++	_eye_light.light_energy = _open * (3.5 + 2.0 * heat)
++	_eye_light.light_color = Color(1.0, 0.95, 0.88).lerp(Color(1.0, 0.35, 0.25), heat)
++
++	var dir := Vector3.DOWN                              # the iris follows the player while the eye is open
++	var target := _look_target()
++	if target != null and _open > 0.05:
++		var want := (target.global_position + Vector3(0.0, 1.4, 0.0) - _eye_root.global_position).normalized()
++		var angle := Vector3.DOWN.angle_to(want)
++		dir = want if angle <= 0.9 else Vector3.DOWN.slerp(want, 0.9 / angle)
++	_look.basis = _look.basis.slerp(Basis(Quaternion(Vector3.DOWN, dir)), clampf(delta * 8.0, 0.0, 1.0))
++
++	var light_target := 1.0                              # the room lights follow the eye
++	if running:
++		light_target = WATCH_LIGHT if game.watching else DARK_LIGHT
++	_light_mul = move_toward(_light_mul, light_target, delta * 12.0)
++	for entry in _room_lights:
++		var l := entry["light"] as OmniLight3D
++		if is_instance_valid(l):
++			l.light_energy = float(entry["base"]) * _light_mul
++
++
++func _look_target() -> Node3D:
++	for id in _bodies:
++		return _bodies[id] as Node3D
++	return null
+diff --git a/Gameplay/Rewards/hint_builder.gd b/Gameplay/Rewards/hint_builder.gd
+new file mode 100644
+index 0000000..bdb1ae9
+--- /dev/null
++++ b/Gameplay/Rewards/hint_builder.gd
+@@ -0,0 +1,159 @@
++class_name HintBuilder
++extends RefCounted
++## Builds the information the reward items give, from the building generator's room data.
++## Every function returns {"text": String, "true": bool, ...}. Hints are TRUE statements that name no room
++## and no exact amount, so they help without solving the level. With fake = true the same kind of statement
++## is built so that it is false: that is what a FALSE TIP sends to another player.
++
++const SIDE_NAMES := ["NORTHERN", "EASTERN", "SOUTHERN", "WESTERN"]       # N, E, S, W like RoomGrid.Dir
++
++
++## Rooms joined to c by a door (every neighbouring room that exists).
++static func neighbours(gen, c: Vector2i) -> Array[Vector2i]:
++	var out: Array[Vector2i] = []
++	for d in 4:
++		var n: Vector2i = c + RoomGrid.DIR_VECTORS[d]
++		if gen.rooms.has(n):
++			out.append(n)
++	return out
++
++
++## Distance in doors from origin to every reachable room.
++static func distances_from(gen, origin: Vector2i) -> Dictionary:
++	var dist := {origin: 0}
++	var queue: Array[Vector2i] = [origin]
++	while not queue.is_empty():
++		var c: Vector2i = queue.pop_front()
++		for n in neighbours(gen, c):
++			if not dist.has(n):
++				dist[n] = int(dist[c]) + 1
++				queue.append(n)
++	return dist
++
++
++## Doors between two rooms, or -1.
++static func door_distance(gen, a: Vector2i, b: Vector2i) -> int:
++	return int(distances_from(gen, a).get(b, -1))
++
++
++## Shortest way to the exit, starting with `from` itself. Empty when `from` is not a room.
++static func path_to_exit(gen, from: Vector2i) -> Array[Vector2i]:
++	var path: Array[Vector2i] = []
++	if not gen.rooms.has(from):
++		return path
++	var dist := distances_from(gen, gen.exit_room)
++	path.append(from)
++	var at := from
++	while at != gen.exit_room:
++		var best := at
++		for n in neighbours(gen, at):
++			if dist.has(n) and int(dist[n]) < int(dist[best]):
++				best = n
++		if best == at:
++			break
++		path.append(best)
++		at = best
++	return path
++
++
++## The neighbouring room that leads toward the exit: the default target of room-picking items.
++static func default_target_room(gen, from: Vector2i) -> Vector2i:
++	var path := path_to_exit(gen, from)
++	return path[1] if path.size() > 1 else from
++
++
++static func trap_scan(gen, room: Vector2i) -> Dictionary:
++	var rd = gen.rooms[room]
++	var trap: bool = rd.penalty != gen.PENALTY_NONE
++	return {"text": "ROOM %s: %s" % [rd.label, "TRAP DETECTED" if trap else "NO TRAP FOUND"], "true": true, "trap": trap}
++
++
++static func room_inspect(gen, room: Vector2i) -> Dictionary:
++	var rd = gen.rooms[room]
++	var what := "NO PENALTY"
++	if rd.penalty == gen.PENALTY_LOSE_POINTS:
++		what = "LOSES %d POINT%s" % [rd.amount, "" if rd.amount == 1 else "S"]
++	elif rd.penalty == gen.PENALTY_SKIP_ROUND:
++		what = "LOCKDOWN FOR %d ROUND%s" % [rd.amount, "" if rd.amount == 1 else "S"]
++	if rd.minigame:
++		what += " / OPTIONAL MINI-GAME"
++	return {"text": "ROOM %s: %s" % [rd.label, what], "true": true}
++
++
++## "One of the next three rooms toward the exit holds a penalty" (or, when none does, that they are clear).
++static func nearby_hint(gen, from: Vector2i, fake := false) -> Dictionary:
++	var path := path_to_exit(gen, from)
++	var ahead := path.slice(1, 4)
++	if ahead.is_empty():
++		return {"text": "THE EXIT IS RIGHT HERE", "true": true}
++	var any := false
++	for c in ahead:
++		if gen.rooms[c].penalty != gen.PENALTY_NONE:
++			any = true
++	var claim_penalty := any != fake                     # fake flips the statement
++	var text := "AT LEAST ONE OF THE NEXT %d ROOMS TOWARD THE EXIT HOLDS A PENALTY" % ahead.size() if claim_penalty \
++		else "THE NEXT %d ROOMS TOWARD THE EXIT ARE CLEAR" % ahead.size()
++	return {"text": text, "true": not fake}
++
++
++## "The eastern route has a dangerous room within two doors": the direction from here whose next two
++## rooms hold the most penalties. When nothing is dangerous nearby it says so.
++static func route_hint(gen, from: Vector2i, fake := false) -> Dictionary:
++	var danger := {}                                     # direction -> penalty rooms within two doors that way
++	for d in 4:
++		var n: Vector2i = from + RoomGrid.DIR_VECTORS[d]
++		if not gen.rooms.has(n):
++			continue
++		var count := int(gen.rooms[n].penalty != gen.PENALTY_NONE)
++		for m in neighbours(gen, n):
++			if m != from:
++				count += int(gen.rooms[m].penalty != gen.PENALTY_NONE)
++		danger[d] = count
++	if danger.is_empty():
++		return {"text": "NOTHING TO REPORT FROM HERE", "true": true}
++	var worst := -1
++	var safest := -1
++	for d in danger:
++		if worst < 0 or int(danger[d]) > int(danger[worst]):
++			worst = d
++		if int(danger[d]) == 0 and safest < 0:
++			safest = d
++	var anything: bool = int(danger[worst]) > 0
++	var claim_dir := -1                                  # -1 = claim that nothing is dangerous
++	if not fake and anything:
++		claim_dir = worst
++	elif fake and anything and safest >= 0:
++		claim_dir = safest                               # a quiet direction, called dangerous
++	elif fake and not anything:
++		claim_dir = int(danger.keys()[0])
++	var text := "NO DANGEROUS ROOM WITHIN TWO DOORS IN ANY DIRECTION" if claim_dir < 0 \
++		else "THE %s ROUTE HAS A DANGEROUS ROOM WITHIN TWO DOORS" % SIDE_NAMES[claim_dir]
++	return {"text": text, "true": not fake}
++
++
++## "The exit is closer to the northern side": the side of the building the exit room leans toward.
++static func exit_hint(gen, fake := false) -> Dictionary:
++	var centre := (int(gen.rooms_per_side) - 1) / 2.0
++	var off := Vector2(gen.exit_room.x - centre, gen.exit_room.y - centre)
++	if absf(off.x) < 0.5 and absf(off.y) < 0.5:
++		return {"text": "THE EXIT IS NEAR THE CENTRE OF THE BUILDING" if not fake else "THE EXIT IS CLOSER TO THE NORTHERN SIDE",
++			"true": not fake}
++	var side := 0
++	if absf(off.x) >= absf(off.y):
++		side = 1 if off.x > 0.0 else 3
++	else:
++		side = 2 if off.y > 0.0 else 0
++	if fake:
++		side = (side + 2) % 4                            # the opposite side
++	return {"text": "THE EXIT IS CLOSER TO THE %s SIDE" % SIDE_NAMES[side], "true": not fake}
++
++
++## A hint of a random kind for the room `from`; fake = false/true as above.
++static func random_tip(gen, from: Vector2i, rng: RandomNumberGenerator, fake: bool) -> Dictionary:
++	match rng.randi() % 3:
++		0:
++			return nearby_hint(gen, from, fake)
++		1:
++			return route_hint(gen, from, fake)
++		_:
++			return exit_hint(gen, fake)
+diff --git a/Gameplay/Rewards/player_inventory.gd b/Gameplay/Rewards/player_inventory.gd
+new file mode 100644
+index 0000000..338671f
+--- /dev/null
++++ b/Gameplay/Rewards/player_inventory.gd
+@@ -0,0 +1,62 @@
++class_name PlayerInventory
++extends RefCounted
++## One player's reward items. Plain data and rules, no UI and no nodes, so the host can own it and a
++## network layer can later replicate snapshot(). Items are not stackable: one item per slot.
++
++signal changed
++
++var capacity := 4
++
++var _items: Array[Dictionary] = []       # {"uid": int, "kind": String}
++var _next_uid := 1
++
++
++func count() -> int:
++	return _items.size()
++
++
++func is_full() -> bool:
++	return _items.size() >= capacity
++
++
++## Adds an item. Returns its uid, or 0 when the kind is unknown or the inventory is full.
++func add(kind: String) -> int:
++	if not RewardCatalog.exists(kind) or is_full():
++		return 0
++	var uid := _next_uid
++	_next_uid += 1
++	_items.append({"uid": uid, "kind": kind})
++	changed.emit()
++	return uid
++
++
++func remove(uid: int) -> bool:
++	for i in _items.size():
++		if int(_items[i]["uid"]) == uid:
++			_items.remove_at(i)
++			changed.emit()
++			return true
++	return false
++
++
++## {} when there is no such item.
++func get_item(uid: int) -> Dictionary:
++	for item in _items:
++		if int(item["uid"]) == uid:
++			return item
++	return {}
++
++
++## uid of the item in a slot (0-based), or 0 when the slot is empty.
++func slot_uid(slot: int) -> int:
++	return int(_items[slot]["uid"]) if slot >= 0 and slot < _items.size() else 0
++
++
++## What the HUD shows: [{slot, uid, kind, name, category, text}], filled slots only.
++func snapshot() -> Array[Dictionary]:
++	var out: Array[Dictionary] = []
++	for i in _items.size():
++		var def := RewardCatalog.info(_items[i]["kind"])
++		out.append({"slot": i, "uid": _items[i]["uid"], "kind": _items[i]["kind"], "name": def["name"],
++			"category": def["category"], "text": def["text"]})
++	return out
+diff --git a/Gameplay/Rewards/reward_catalog.gd b/Gameplay/Rewards/reward_catalog.gd
+new file mode 100644
+index 0000000..88fcb83
+--- /dev/null
++++ b/Gameplay/Rewards/reward_catalog.gd
+@@ -0,0 +1,91 @@
++class_name RewardCatalog
++extends RefCounted
++## Every reward item a mini-game can grant. Data only: what an item does lives in RewardManager.
++##
++## Three categories (see the design):
++##   INFORMATION  - hints about rooms, routes and the exit. Useful, but never the whole answer.
++##   PROTECTION   - armed by the player, consumed by the next matching room effect.
++##   MANIPULATION - affects what OTHER players see; needs a target player.
++
++enum Category { INFORMATION, PROTECTION, MANIPULATION }
++
++const TRAP_SCAN := "trap_scan"
++const ROOM_INSPECT := "room_inspect"
++const NEARBY_HINT := "nearby_hint"
++const ROUTE_HINT := "route_hint"
++const EXIT_HINT := "exit_hint"
++const PENALTY_SHIELD := "penalty_shield"
++const POINT_GUARD := "point_guard"
++const LOCKDOWN_BREAKER := "lockdown_breaker"
++const FALSE_TIP := "false_tip"
++const INFO_JAMMER := "info_jammer"
++
++## name: short label on the HUD slot. text: tooltip. needs_room: the player may pick a room within range.
++const ITEMS := {
++	TRAP_SCAN: {"name": "TRAP SCAN", "category": Category.INFORMATION, "needs_room": true,
++		"text": "Tells you whether one nearby room holds a trap."},
++	ROOM_INSPECT: {"name": "ROOM INSPECT", "category": Category.INFORMATION, "needs_room": true,
++		"text": "Shows the exact effect of one nearby room."},
++	NEARBY_HINT: {"name": "AHEAD HINT", "category": Category.INFORMATION, "needs_room": false,
++		"text": "Says whether a penalty waits among the next three rooms toward the exit."},
++	ROUTE_HINT: {"name": "ROUTE HINT", "category": Category.INFORMATION, "needs_room": false,
++		"text": "Names a direction that has a dangerous room within two doors."},
++	EXIT_HINT: {"name": "EXIT HINT", "category": Category.INFORMATION, "needs_room": false,
++		"text": "Tells you which side of the building the exit is closer to."},
++	PENALTY_SHIELD: {"name": "SHIELD", "category": Category.PROTECTION, "needs_room": false,
++		"text": "The next points penalty you take is reduced."},
++	POINT_GUARD: {"name": "POINT GUARD", "category": Category.PROTECTION, "needs_room": false,
++		"text": "The next points penalty you would take is blocked completely."},
++	LOCKDOWN_BREAKER: {"name": "LOCKDOWN BREAKER", "category": Category.PROTECTION, "needs_room": false,
++		"text": "The next lockdown does not apply to you."},
++	FALSE_TIP: {"name": "FALSE TIP", "category": Category.MANIPULATION, "needs_room": false,
++		"text": "Sends another player a believable hint that is wrong."},
++	INFO_JAMMER: {"name": "JAMMER", "category": Category.MANIPULATION, "needs_room": false,
++		"text": "Another player's next information item shows nothing."},
++}
++
++## Chance of each category by zone of the room that holds the mini-game: [information, protection, manipulation].
++## Near the start information is common; near the exit protection matters more.
++const CATEGORY_WEIGHTS := [
++	[0.60, 0.30, 0.10],     # near start
++	[0.40, 0.40, 0.20],     # middle
++	[0.25, 0.55, 0.20],     # near exit
++]
++
++
++static func exists(kind: String) -> bool:
++	return ITEMS.has(kind)
++
++
++static func info(kind: String) -> Dictionary:
++	return ITEMS.get(kind, {})
++
++
++static func kinds_in(category: int) -> Array[String]:
++	var out: Array[String] = []
++	for kind in ITEMS:
++		if int(ITEMS[kind]["category"]) == category:
++			out.append(kind)
++	return out
++
++
++## Picks a reward kind. The host owns the rng (seed it from the match seed, room and player so it is repeatable).
++## allow_manipulation = false when there is nobody else to target (solo play).
++static func roll(rng: RandomNumberGenerator, zone: int, allow_manipulation := true) -> String:
++	var weights: Array = (CATEGORY_WEIGHTS[clampi(zone, 0, 2)] as Array).duplicate()
++	if not allow_manipulation:
++		weights[Category.MANIPULATION] = 0.0
++	var total := 0.0
++	for w in weights:
++		total += float(w)
++	var pick := rng.randf() * total
++	var category := int(Category.INFORMATION)
++	for i in weights.size():
++		if float(weights[i]) <= 0.0:
++			continue
++		category = i
++		pick -= float(weights[i])
++		if pick < 0.0:
++			break
++	var kinds := kinds_in(category)
++	return kinds[rng.randi() % kinds.size()]
+diff --git a/Gameplay/Rewards/reward_manager.gd b/Gameplay/Rewards/reward_manager.gd
+new file mode 100644
+index 0000000..3381837
+--- /dev/null
++++ b/Gameplay/Rewards/reward_manager.gd
+@@ -0,0 +1,260 @@
++class_name RewardManager
++extends RefCounted
++## The host's rules for mini-game rewards: who owns which items, what using an item does, which protections are
++## armed. It never touches the UI, nodes, points or the scene: it returns plain result Dictionaries, so the
++## authoritative host decides what to show and apply, and a network layer can later call the same methods.
++##
++## Player actions the host validates through this class:
++##   complete_minigame()  a mini-game ended; a win puts ONE reward item in the player's inventory
++##   use_item()           the player uses an item whenever and wherever they like (not tied to the room won in)
++##   discard() / transfer_item()
++## Events the host reports before it applies them:
++##   resolve_lose_points() / resolve_lockdown()   protections that were armed by the player
++##
++## Open design questions are switches, not assumptions: `tradable` and `reusable` default to false.
++
++signal item_granted(player_id: int, kind: String)
++signal item_used(player_id: int, kind: String, result: Dictionary)
++## A tip (possibly false) reached a player. The sender and the truth are only in tips_log.
++signal tip_received(player_id: int, text: String)
++signal protection_used(player_id: int, kind: String)
++
++const REASONS := {
++	"unknown_player": "NO SUCH PLAYER",
++	"no_such_item": "YOU DO NOT HAVE THAT ITEM",
++	"lost": "MINI-GAME LOST: NO REWARD",
++	"already_done": "YOU ALREADY CLAIMED THIS ROOM'S REWARD",
++	"inventory_full": "INVENTORY FULL: DISCARD AN ITEM FIRST",
++	"already_armed": "THAT PROTECTION IS ALREADY ARMED",
++	"out_of_range": "THAT ROOM IS TOO FAR AWAY",
++	"bad_target": "INVALID TARGET",
++	"no_context": "NOTHING TO READ HERE",
++	"not_tradable": "ITEMS CANNOT BE TRADED",
++	"target_full": "THEIR INVENTORY IS FULL",
++}
++
++## Inventory slots per player (applied to players added after the change).
++var slots := 4
++## Can players give items to each other? Undecided in the design: off until decided.
++var tradable := false
++## Is an item kept after use? Undecided in the design: off (items are used up) until decided.
++var reusable := false
++## Points a SHIELD takes off the next penalty.
++var shield_reduction := 1
++## How many doors away a room may be for TRAP SCAN / ROOM INSPECT.
++var scan_range := 2
++## Every tip sent with FALSE TIP, for the host: {"from", "to", "text", "true"}.
++var tips_log: Array[Dictionary] = []
++
++var _inventories := {}                   # player id -> PlayerInventory
++var _armed := {}                         # player id -> {kind: true}
++var _jammed := {}                        # player id -> true: the next information item shows nothing
++var _claimed := {}                       # "player|room label" -> true
++
++
++func add_player(player_id: int) -> void:
++	if _inventories.has(player_id):
++		return
++	var inv := PlayerInventory.new()
++	inv.capacity = slots
++	_inventories[player_id] = inv
++	_armed[player_id] = {}
++
++
++func has_player(player_id: int) -> bool:
++	return _inventories.has(player_id)
++
++
++func inventory_of(player_id: int) -> PlayerInventory:
++	return _inventories.get(player_id)
++
++
++func minigame_claimed(player_id: int, room_label: String) -> bool:
++	return _claimed.has(_claim_key(player_id, room_label))
++
++
++func is_armed(player_id: int, kind: String) -> bool:
++	return (_armed.get(player_id, {}) as Dictionary).has(kind)
++
++
++## Names of the protections the player has armed, for the HUD.
++func armed_names(player_id: int) -> Array[String]:
++	var out: Array[String] = []
++	for kind in (_armed.get(player_id, {}) as Dictionary):
++		out.append(str(RewardCatalog.info(kind)["name"]))
++	return out
++
++
++# ---- rewards -------------------------------------------------------------------------------------
++## A mini-game ended. Only a win gives something: one item, once per player and room. The item is random for the
++## room's zone unless the mini-game names its own reward (forced_kind, e.g. Don't Blink always gives TRAP SCAN).
++## A full inventory refuses the reward WITHOUT using the claim up, so the player can free a slot and try again.
++func complete_minigame(player_id: int, room_label: String, won: bool, zone: int,
++		rng: RandomNumberGenerator, allow_manipulation := true, forced_kind := "") -> Dictionary:
++	var inv: PlayerInventory = inventory_of(player_id)
++	if inv == null:
++		return _fail("unknown_player")
++	if minigame_claimed(player_id, room_label):
++		return _fail("already_done")
++	if not won:
++		return _fail("lost")
++	if inv.is_full():
++		return _fail("inventory_full")
++	var kind := forced_kind if RewardCatalog.exists(forced_kind) else RewardCatalog.roll(rng, zone, allow_manipulation)
++	var uid := inv.add(kind)
++	_claimed[_claim_key(player_id, room_label)] = true
++	item_granted.emit(player_id, kind)
++	var def := RewardCatalog.info(kind)
++	return {"ok": true, "reason": "", "kind": kind, "uid": uid, "title": def["name"], "text": "ADDED TO YOUR INVENTORY", "data": {}}
++
++
++# ---- using items ---------------------------------------------------------------------------------
++## Use an item. ctx (all keys optional unless the item needs them):
++##   "generator"      the building generator (room data)             needed by information items
++##   "room"           Vector2i, the room the player is in            default: the start room
++##   "target_room"    Vector2i, for TRAP SCAN / ROOM INSPECT         default: the next room toward the exit
++##   "target_player"  int, for manipulation items
++##   "player_rooms"   {player id: Vector2i}, where players are       used by FALSE TIP
++##   "rng"            RandomNumberGenerator                          used by FALSE TIP
++## Returns {ok, reason, kind, uid, title, text, data}. A failed use changes nothing and keeps the item.
++func use_item(player_id: int, uid: int, ctx := {}) -> Dictionary:
++	var inv: PlayerInventory = inventory_of(player_id)
++	if inv == null:
++		return _fail("unknown_player")
++	var item := inv.get_item(uid)
++	if item.is_empty():
++		return _fail("no_such_item")
++	var kind: String = item["kind"]
++	var def := RewardCatalog.info(kind)
++	var result := {"ok": true, "reason": "", "kind": kind, "uid": uid, "title": def["name"], "text": "", "data": {}}
++	var category := int(def["category"])
++
++	if category == RewardCatalog.Category.INFORMATION:
++		var gen = ctx.get("generator")
++		if gen == null:
++			return _fail("no_context", kind)
++		if _jammed.has(player_id):                       # a JAMMER hit this player: the item is wasted
++			_jammed.erase(player_id)
++			result["text"] = "SIGNAL JAMMED: NOTHING RECEIVED"
++			result["data"] = {"jammed": true}
++			return _finish(inv, player_id, uid, kind, result)
++		var from: Vector2i = ctx.get("room", gen.start_room)
++		var read := _read_information(gen, kind, from, ctx)
++		if read.has("error"):
++			return _fail(str(read["error"]), kind)
++		result["text"] = read["text"]
++		result["data"] = read
++		return _finish(inv, player_id, uid, kind, result)
++
++	if category == RewardCatalog.Category.PROTECTION:
++		if is_armed(player_id, kind):
++			return _fail("already_armed", kind)
++		_armed[player_id][kind] = true
++		result["text"] = "ARMED: WAITING FOR THE NEXT MATCHING EFFECT"
++		return _finish(inv, player_id, uid, kind, result)
++
++	# manipulation: needs another player
++	var target := int(ctx.get("target_player", -1))
++	if target == player_id or not has_player(target):
++		return _fail("bad_target", kind)
++	if kind == RewardCatalog.FALSE_TIP:
++		var gen = ctx.get("generator")
++		if gen == null:
++			return _fail("no_context", kind)
++		var rooms: Dictionary = ctx.get("player_rooms", {})
++		var at: Vector2i = rooms.get(target, gen.start_room)
++		var rng: RandomNumberGenerator = ctx.get("rng", RandomNumberGenerator.new())
++		var tip := HintBuilder.random_tip(gen, at, rng, true)
++		tips_log.append({"from": player_id, "to": target, "text": tip["text"], "true": tip["true"]})
++		tip_received.emit(target, tip["text"])
++		result["text"] = "TIP SENT"
++	else:                                                # INFO_JAMMER
++		_jammed[target] = true
++		result["text"] = "THEIR NEXT INFORMATION ITEM WILL SHOW NOTHING"
++	return _finish(inv, player_id, uid, kind, result)
++
++
++## Information items. Returns the hint Dictionary, or {"error": reason} when the target is not valid.
++func _read_information(gen, kind: String, from: Vector2i, ctx: Dictionary) -> Dictionary:
++	match kind:
++		RewardCatalog.NEARBY_HINT:
++			return HintBuilder.nearby_hint(gen, from)
++		RewardCatalog.ROUTE_HINT:
++			return HintBuilder.route_hint(gen, from)
++		RewardCatalog.EXIT_HINT:
++			return HintBuilder.exit_hint(gen)
++	var target: Vector2i = ctx.get("target_room", HintBuilder.default_target_room(gen, from))
++	if not gen.rooms.has(target):
++		return {"error": "bad_target"}
++	var dist := HintBuilder.door_distance(gen, from, target)
++	if dist < 0 or dist > scan_range:
++		return {"error": "out_of_range"}
++	return HintBuilder.trap_scan(gen, target) if kind == RewardCatalog.TRAP_SCAN else HintBuilder.room_inspect(gen, target)
++
++
++# ---- protections ---------------------------------------------------------------------------------
++## The host calls this when a room is about to take points from the player. Returns
++## {"amount": points to take after protection, "blocked": bool, "by": item kind or ""}.
++## A POINT GUARD blocks the whole penalty; otherwise a SHIELD takes `shield_reduction` off.
++func resolve_lose_points(player_id: int, amount: int) -> Dictionary:
++	if _consume_armed(player_id, RewardCatalog.POINT_GUARD):
++		return {"amount": 0, "blocked": true, "by": RewardCatalog.POINT_GUARD}
++	if _consume_armed(player_id, RewardCatalog.PENALTY_SHIELD):
++		var left := maxi(amount - shield_reduction, 0)
++		return {"amount": left, "blocked": left == 0, "by": RewardCatalog.PENALTY_SHIELD}
++	return {"amount": amount, "blocked": false, "by": ""}
++
++
++## The host calls this when a lockdown is about to hit the player. True = a LOCKDOWN BREAKER absorbed it.
++func resolve_lockdown(player_id: int) -> bool:
++	return _consume_armed(player_id, RewardCatalog.LOCKDOWN_BREAKER)
++
++
++# ---- inventory management ------------------------------------------------------------------------
++func discard(player_id: int, uid: int) -> bool:
++	var inv: PlayerInventory = inventory_of(player_id)
++	return inv != null and inv.remove(uid)
++
++
++## Give an item to another player. Refused while `tradable` is off.
++func transfer_item(from_id: int, uid: int, to_id: int) -> Dictionary:
++	var from_inv: PlayerInventory = inventory_of(from_id)
++	var to_inv: PlayerInventory = inventory_of(to_id)
++	if from_inv == null or to_inv == null or from_id == to_id:
++		return _fail("bad_target")
++	if not tradable:
++		return _fail("not_tradable")
++	var item := from_inv.get_item(uid)
++	if item.is_empty():
++		return _fail("no_such_item")
++	if to_inv.is_full():
++		return _fail("target_full")
++	var kind: String = item["kind"]
++	from_inv.remove(uid)
++	to_inv.add(kind)
++	return {"ok": true, "reason": "", "kind": kind, "uid": uid, "title": RewardCatalog.info(kind)["name"], "text": "ITEM GIVEN", "data": {}}
++
++
++# ---- internals -----------------------------------------------------------------------------------
++func _finish(inv: PlayerInventory, player_id: int, uid: int, kind: String, result: Dictionary) -> Dictionary:
++	if not reusable:
++		inv.remove(uid)
++	item_used.emit(player_id, kind, result)
++	return result
++
++
++func _consume_armed(player_id: int, kind: String) -> bool:
++	var armed: Dictionary = _armed.get(player_id, {})
++	if not armed.has(kind):
++		return false
++	armed.erase(kind)
++	protection_used.emit(player_id, kind)
++	return true
++
++
++func _claim_key(player_id: int, room_label: String) -> String:
++	return "%d|%s" % [player_id, room_label]
++
++
++func _fail(reason: String, kind := "") -> Dictionary:
++	return {"ok": false, "reason": reason, "kind": kind, "uid": 0, "title": "", "text": REASONS.get(reason, reason), "data": {}}
+diff --git a/Levels/The Exit Room/building_generator.gd b/Levels/The Exit Room/building_generator.gd
+index 07f5ae7..baa55d2 100644
+--- a/Levels/The Exit Room/building_generator.gd	
++++ b/Levels/The Exit Room/building_generator.gd	
+@@ -30,6 +30,8 @@ const ZONE_MID := 1
+ const ZONE_FAR := 2                         # last third: close to the exit
+ ## Chance multiplier for a penalty in each zone (times penalty_fraction): mild near the start, harsh near the exit.
+ const ZONE_DENSITY := [0.4, 1.0, 1.4]
++## Chance multiplier for an optional mini-game in each zone (times minigame_fraction): mostly the middle of the way.
++const MINIGAME_DENSITY := [0.5, 1.0, 0.8]
+ 
+ const N := RoomGrid.Dir.N
+ const E := RoomGrid.Dir.E
+@@ -64,6 +66,7 @@ const PROPS := {
+ @export var point_budget := 10               # points a player starts with
+ @export var door_cost := 1                   # points every ordinary door costs
+ @export var min_route_margin := 2            # points that must still be left after the cheapest route to the exit
++@export_range(0.0, 1.0) var minigame_fraction := 0.12   # share of rooms with an OPTIONAL mini-game (reward item for a win)
+ @export var draw_distance := 35.0            # doors, monitors and props are hidden beyond this many metres
+ 
+ 
+@@ -76,6 +79,7 @@ class RoomData extends RefCounted:
+ 	var is_start := false
+ 	var is_exit := false
+ 	var zone := 0                            # ZONE_NEAR / ZONE_MID / ZONE_FAR (progress from the start to the exit)
++	var minigame := false                    # an optional mini-game is offered here; never needed to finish the level
+ 	var dist_start := 0                      # doors from the start room
+ 	var dist_exit := 0                       # doors from the exit room
+ 	var label := ""                          # e.g. "C4"
+@@ -130,6 +134,7 @@ func _ready() -> void:
+ 	_choose_exit()
+ 	_choose_start()
+ 	_assign_penalties()
++	_assign_minigames()
+ 	var links := _build_links()
+ 	var cells: Array[Vector2i] = []
+ 	for rd in room_list:
+@@ -159,13 +164,20 @@ func get_room_at_position(world_pos: Vector3) -> RoomData:
+ 	return rooms.get(_room_of(c))
+ 
+ 
++## World position of the middle of a room's floor (the walking surface), for placing things inside a room.
++func get_room_floor_center(rd: RoomData) -> Vector3:
++	var first: Vector2i = rd.cells[0]
++	var centre: Vector3 = _gm.map_to_local(Vector3i(first.x, 0, first.y)) + Vector3(room_cells - 1, 0, room_cells - 1) * 2.0
++	return _gm.to_global(centre + Vector3(0, 0.2, 0))                # 0.2 = the floor slab
++
++
+ ## Plain data describing the whole building (for a minimap, a debug view, or saving). Safe to serialise.
+ func get_layout() -> Dictionary:
+ 	var rs := []
+ 	for rd in room_list:
+ 		rs.append({"coord": [rd.coord.x, rd.coord.y], "label": rd.label, "kind": rd.kind, "doors": rd.doors,
+ 			"penalty": rd.penalty, "amount": rd.amount, "start": rd.is_start, "exit": rd.is_exit,
+-			"zone": rd.zone, "dist_start": rd.dist_start, "dist_exit": rd.dist_exit})
++			"zone": rd.zone, "dist_start": rd.dist_start, "dist_exit": rd.dist_exit, "minigame": rd.minigame})
+ 	var ds := []
+ 	for r in door_records:
+ 		ds.append({"a": [r.room_a.x, r.room_a.y], "b": [r.room_b.x, r.room_b.y], "exit": r.is_exit})
+@@ -341,6 +353,20 @@ func _assign_penalties() -> void:
+ 	_validate_effects()
+ 
+ 
++## Optional mini-games. They never change the route guarantee (winning only gives an item), so they are placed
++## after the effects are validated, with their own rng so the rest of the building stays exactly as it was.
++## Never in the start room, the exit room or a lockdown room (nobody should be stuck in a room to play).
++func _assign_minigames() -> void:
++	var mini_rng := RandomNumberGenerator.new()
++	mini_rng.seed = hash("minigames:%d" % rng.seed)
++	for rd in room_list:
++		rd.minigame = false
++		if rd.is_start or rd.is_exit or rd.penalty == PENALTY_SKIP_ROUND:
++			continue
++		var chance := clampf(minigame_fraction * MINIGAME_DENSITY[rd.zone], 0.0, 1.0)
++		rd.minigame = mini_rng.randf() < chance
++
++
+ func _roll_effect(rd: RoomData) -> void:
+ 	match rd.zone:
+ 		ZONE_NEAR:                                           # mild: lose one point
+diff --git a/tests/dont_blink_test.gd b/tests/dont_blink_test.gd
+new file mode 100644
+index 0000000..ed7b4f2
+--- /dev/null
++++ b/tests/dont_blink_test.gd
+@@ -0,0 +1,396 @@
++extends SceneTree
++## "Don't Blink" mini-game tests.
++##   Stage A: the rules (DontBlinkGame) by stepping the clock, no scene.
++##   Stage B: the real level: a player walks onto the pads, moves while the eye watches, leaves, loses, wins.
++##
++##   godot --headless --path . --script res://tests/dont_blink_test.gd
++##
++## Exit code 0 = everything passed, 1 = at least one check failed.
++
++const LEVEL := "res://Levels/The Exit Room/BaseLevel.tscn"
++const DT := 1.0 / 60.0
++
++var passed := 0
++var failed := 0
++
++
++func _init() -> void:
++	_run()
++
++
++func _run() -> void:
++	t_countdown_and_joining()
++	t_rules()
++	t_everyone_pays()
++	t_sabotage()
++	t_finish_leave_reset()
++	t_time_limit()
++	t_difficulty()
++	t_random_phases()
++	await t_level()
++	print("\n%d passed, %d failed" % [passed, failed])
++	quit(1 if failed > 0 else 0)
++
++
++# ---- stage A: the rules -------------------------------------------------------------------------
++func t_countdown_and_joining() -> void:
++	_title("countdown and joining")
++	var g := _game()
++	check(g.state == DontBlinkGame.State.IDLE and g.join(1) and g.state == DontBlinkGame.State.COUNTDOWN, "the first player to join starts the countdown")
++	check(g.join(2), "others can join during the countdown")
++	_sim(g, 2.9)
++	check(g.state == DontBlinkGame.State.COUNTDOWN, "still counting down after 2.9 s")
++	_sim(g, 0.2)
++	check(g.state == DontBlinkGame.State.RUNNING and not g.watching and g.danger == 0, "the game starts dark with no danger")
++	check(not g.join(3), "nobody can join once it is running")
++
++
++func t_rules() -> void:
++	_title("the eye: freeze while watched, move while dark")
++	var g := _fixed_game([1])
++	_to_phase(g, true)
++	_sim(g, 0.4, {1: 3.0})
++	_sim(g, 1.2)
++	check(g.danger == 0, "moving during the first 0.5 s after the light comes on is allowed (reaction time)")
++
++	g = _fixed_game([1])
++	var seen := []
++	g.player_detected.connect(func(id: int) -> void: seen.append(id))
++	_to_phase(g, true)
++	_sim(g, 1.5, {1: 3.0})
++	check(g.danger == 1 and seen == [1], "moving while watched is detected: danger +1")
++	check(g.status_of(1) == "playing", "one mistake does not end the game")
++
++	g = _fixed_game([1])
++	_to_phase(g, true)
++	_sim(g, 1.8, {1: 3.0})
++	check(g.danger == 1, "moving the whole time counts once per watching phase, not every frame")
++	_to_phase(g, false)
++	_to_phase(g, true)
++	_sim(g, 1.0, {1: 3.0})
++	check(g.danger == 2, "the next watching phase can add danger again")
++
++	g = _fixed_game([1])
++	_sim(g, 20.0)
++	check(g.danger == 0, "standing still never costs danger")
++
++	g = _fixed_game([1])
++	_to_phase(g, true)
++	_sim(g, 1.5, {1: 0.1})
++	check(g.danger == 0, "a tiny drift (0.1 m/s) is not movement")
++	g = _fixed_game([1])
++	_to_phase(g, true)
++	_sim(g, 1.5, {1: 0.2})
++	check(g.danger == 1, "0.2 m/s is movement")
++
++	g = _fixed_game([1])
++	_to_phase(g, false)
++	_sim(g, 1.5, {1: 5.0})
++	check(g.danger == 0, "moving while the eye is shut is free")
++
++
++func t_everyone_pays() -> void:
++	_title("one mistake raises the danger for everyone")
++	var g := _fixed_game([1, 2])
++	var seen := []
++	g.player_detected.connect(func(id: int) -> void: seen.append(id))
++	_to_phase(g, true)
++	_sim(g, 1.0, {1: 0.0, 2: 3.0})
++	check(g.danger == 1 and seen == [2], "player 2 moved: the room detects player 2 only")
++	check(g.status_of(1) == "playing" and g.status_of(2) == "playing", "both are still in the game, sharing the one danger level")
++
++
++func t_sabotage() -> void:
++	_title("a player can make everyone lose")
++	var g := _fixed_game([1, 2, 3])
++	g.max_danger = 3
++	var won := []
++	var lost := []
++	var ended := [0]
++	g.player_won.connect(func(id: int) -> void: won.append(id))
++	g.player_lost.connect(func(id: int) -> void: lost.append(id))
++	g.ended.connect(func() -> void: ended[0] += 1)
++	check(g.finish(3), "player 3 reaches the exit early and wins")
++	for i in 3:
++		_to_phase(g, false)
++		_to_phase(g, true)                                   # a NEW watching phase each time
++		_sim(g, 1.0, {2: 3.0})                               # player 2 keeps moving on purpose
++	check(g.state == DontBlinkGame.State.ENDED and ended[0] == 1, "at maximum danger the game ends")
++	lost.sort()
++	check(lost == [1, 2] and won == [3], "everyone still playing loses (even the one who stood still); the winner keeps the win")
++	check(g.status_of(3) == "won", "player 3 stays a winner")
++
++
++func t_finish_leave_reset() -> void:
++	_title("finishing, leaving, resetting")
++	var g := _game()
++	g.join(1)
++	g.join(2)
++	check(not g.finish(1), "the exit does not count before the game is running")
++	_sim_until(g, func() -> bool: return g.state == DontBlinkGame.State.RUNNING)
++	var lost := []
++	g.player_lost.connect(func(id: int) -> void: lost.append(id))
++	check(g.finish(1) and g.state == DontBlinkGame.State.RUNNING, "player 1 wins; the game goes on for player 2")
++	check(not g.finish(1), "a win counts once")
++	check(g.finish(2) and g.state == DontBlinkGame.State.ENDED and lost.is_empty(), "when everyone finished the game ends with no loser")
++	check(not g.join(3), "no joining after the end")
++	g.reset()
++	check(g.state == DontBlinkGame.State.IDLE and g.join(3), "after a reset the room can be played again")
++
++	g = _game()
++	g.join(1)
++	g.join(2)
++	g.leave(1)
++	g.leave(2)
++	check(g.state == DontBlinkGame.State.IDLE, "everybody walked away during the countdown: back to idle")
++
++	g = _game()
++	g.join(1)
++	g.join(2)
++	_sim_until(g, func() -> bool: return g.state == DontBlinkGame.State.RUNNING)
++	g.leave(1)
++	check(g.status_of(1) == "left" and g.state == DontBlinkGame.State.RUNNING, "leaving costs nothing and the others carry on")
++	g.finish(2)
++	check(g.state == DontBlinkGame.State.ENDED and g.status_of(1) == "left", "the one who left is not counted as a loser")
++
++	g = _game()
++	g.join(1)
++	_sim_until(g, func() -> bool: return g.state == DontBlinkGame.State.RUNNING)
++	g.leave(1)
++	check(g.state == DontBlinkGame.State.IDLE, "the last player walking out resets the room (no result)")
++
++
++func t_time_limit() -> void:
++	_title("optional time limit")
++	var g := _fixed_game([1])
++	check(g.time_left() == -1.0, "no time limit by default")
++	g.time_limit = 5.0
++	_sim(g, 5.5)
++	check(g.state == DontBlinkGame.State.ENDED and g.status_of(1) == "lost", "when the time is up everyone still playing loses")
++
++
++func t_difficulty() -> void:
++	_title("danger makes the eye more watchful")
++	var g := _game()
++	var w0 := g.current_watch_range()
++	var d0 := g.current_dark_range()
++	g.danger = 4
++	check(g.current_watch_range().y > w0.y and g.current_watch_range().x > w0.x, "at danger 4 the eye watches longer")
++	check(g.current_dark_range().y < d0.y and g.current_dark_range().x < d0.x, "at danger 4 the dark phases are shorter")
++	g.danger = 50
++	check(g.current_dark_range().y >= d0.y * 0.4 - 0.001, "the dark phases never shrink below 40% of normal")
++
++
++func t_random_phases() -> void:
++	_title("the light flashes at random")
++	var g := _game()
++	g.countdown_time = 0.0
++	g.join(1)
++	var watch := []
++	var dark := []
++	var t := [0.0]
++	var last := [0.0]
++	g.tick(DT)                                               # countdown 0 -> running (the first dark phase starts)
++	g.watching_changed.connect(func(w: bool) -> void:
++		var length: float = t[0] - last[0]
++		last[0] = t[0]
++		(dark if w else watch).append(length))                # a change TO watching ends a dark phase
++	for i in 20000:
++		t[0] += DT
++		g.tick(DT)
++		if dark.size() >= 15 and watch.size() >= 15:
++			break
++	var ok_dark := true
++	var ok_watch := true
++	for d in dark:
++		ok_dark = ok_dark and d >= 2.0 - 0.05 and d <= 4.5 + 0.05
++	for w in watch:
++		ok_watch = ok_watch and w >= 1.5 - 0.05 and w <= 3.0 + 0.05
++	check(dark.size() >= 15 and watch.size() >= 15, "many phases were produced (%d dark, %d watching)" % [dark.size(), watch.size()])
++	check(ok_dark and ok_watch, "every dark phase lasts 2.0-4.5 s and every watching phase 1.5-3.0 s")
++	check(dark.max() - dark.min() > 0.5 and watch.max() - watch.min() > 0.3, "the lengths differ from phase to phase (random)")
++
++	var a := _timeline(7)
++	var b := _timeline(7)
++	var c := _timeline(8)
++	check(a == b, "the same seed gives the same light pattern")
++	check(a != c, "a different seed gives a different light pattern")
++
++
++# ---- stage B: the real level -----------------------------------------------------------------------
++func t_level() -> void:
++	_title("level: pads, eye, lights, HUD, reward")
++	var level: Node = (load(LEVEL) as PackedScene).instantiate()
++	root.add_child(level)
++	current_scene = level
++	for i in 20:
++		await physics_frame
++	var gen: Node3D
++	for n in level.find_children("*", "Node3D", true, false):
++		if "door_records" in n:
++			gen = n
++	var player := get_first_node_in_group("player") as Node3D
++	var solo := level.get_node("SoloMatch")
++	var hud: GameHUD = solo.hud
++	player.set_process(false)
++	player.set_physics_process(false)
++	for rd in gen.room_list:
++		solo._penalised[rd.label] = true
++	var rooms_with_game := 0
++	var rd = null
++	for r in gen.room_list:
++		if r.minigame:
++			rooms_with_game += 1
++			if rd == null:
++				rd = r
++	check(rd != null and solo._minigames.size() == rooms_with_game, "every mini-game room has a Don't Blink game (%d)" % rooms_with_game)
++	var gr: DontBlinkRoom = solo._minigames[rd.label]
++	var floor_c: Vector3 = gen.get_room_floor_center(rd)
++	var start_p: Vector3 = gr._start_pad["root"].global_position
++	var exit_p: Vector3 = gr._finish_pad["root"].global_position
++	var half: float = gen.room_cells * 4.0 * 0.5
++	check(absf(start_p.x - floor_c.x) < half - 1.0 and absf(start_p.z - floor_c.z) < half - 1.0 and absf(exit_p.x - floor_c.x) < half - 1.0
++		and absf(exit_p.z - floor_c.z) < half - 1.0 and start_p.distance_to(exit_p) > 6.0, "both pads are inside the room, far apart")
++	check(gr._eye_root.global_position.y - DontBlinkRoom.EYE_RADIUS - floor_c.y >= 2.2, "the eye hangs above head height (nobody bumps into it)")
++	check(gr._room_lights.size() > 0, "the room's lights are found, so they can flash with the eye")
++
++	gr.game.countdown_time = 0.3
++	gr.game.watch_time = Vector2(1.0, 1.0)
++	gr.game.dark_time = Vector2(0.5, 0.5)
++	gr.game.reaction_grace = 0.2
++	solo._on_room_entered(rd, player)
++
++	# 1) walking away during the countdown just cancels it
++	await _put(player, start_p)
++	await _frames(3)
++	check(gr.game.state == DontBlinkGame.State.COUNTDOWN and hud.mini_game_panel.visible, "stepping on the START pad begins the countdown and shows the panel")
++	await _put(player, floor_c + Vector3(25.0, 0.1, 0.0))
++	await _frames(3)
++	check(gr.game.state == DontBlinkGame.State.IDLE and not hud.mini_game_panel.visible, "walking out of the room cancels it, no penalty, panel hidden")
++
++	# 2) moving while watched: danger, then everyone loses
++	gr.game.max_danger = 2
++	var points_before: int = solo._points
++	var items_before: int = solo._rewards.inventory_of(1).count()
++	await _put(player, start_p)
++	var open_seen := false
++	var dark_seen := false
++	var base_energy: float = float(gr._room_lights[0]["base"])
++	var wiggle := 0.05
++	for i in 900:
++		await physics_frame
++		if gr.game.state == DontBlinkGame.State.RUNNING:
++			player.global_position += Vector3(wiggle, 0.0, 0.0)
++			wiggle = -wiggle
++			if gr._open > 0.95 and gr._lid_pivot.rotation.x < 0.3 and float((gr._room_lights[0]["light"] as OmniLight3D).light_energy) > base_energy * 1.5:
++				open_seen = true
++			if gr._open < 0.05 and gr._lid_pivot.rotation.x > PI - 0.3 and float((gr._room_lights[0]["light"] as OmniLight3D).light_energy) < base_energy * 0.5:
++				dark_seen = true
++		if gr.game.state == DontBlinkGame.State.ENDED:
++			break
++	check(open_seen, "while the eye watches: the lid is open and the room lights flash bright")
++	check(dark_seen, "while the eye is shut: the lid is closed and the room is dark")
++	check(gr.game.state == DontBlinkGame.State.ENDED and gr.game.status_of(1) == "lost", "moving while watched raised the danger to the maximum: the player lost")
++	check(str(hud.mini_game_panel._status.text).contains("FOUND"), "the HUD says the eye found you")
++	check(solo._points == points_before and solo._rewards.inventory_of(1).count() == items_before, "losing costs no points and gives no reward")
++	await _frames(240)                                       # RESULT_SECONDS later the room can be played again
++	check(gr.game.state == DontBlinkGame.State.IDLE and not hud.mini_game_panel.visible, "after the result the room resets and the panel hides")
++
++	# 3) standing still while watched, then reaching the exit pad: the reward
++	gr.game.max_danger = 5
++	await _put(player, floor_c + Vector3(25.0, 0.1, 0.0))    # step off the pad first: stepping ON it starts a try
++	await _frames(3)
++	await _put(player, start_p)
++	await _wait_for(func() -> bool: return gr.game.state == DontBlinkGame.State.RUNNING, 300)
++	await _frames(40)                                        # stand still through a light flash
++	check(gr.game.danger == 0 and gr.game.state == DontBlinkGame.State.RUNNING, "standing still through the flashes costs nothing")
++	await _put(player, exit_p)
++	await _frames(5)
++	var inv: PlayerInventory = solo._rewards.inventory_of(1)
++	check(inv.count() == items_before + 1 and inv.snapshot()[inv.count() - 1]["kind"] == RewardCatalog.TRAP_SCAN, "reaching the EXIT pad gives a TRAP SCAN: a hint about one nearby room")
++	check(gr.claimed and hud.inventory_bar.filled_count() == inv.count(), "the reward shows in the inventory bar and the eye goes to sleep")
++	await _put(player, start_p)
++	await _frames(5)
++	check(gr.game.state == DontBlinkGame.State.IDLE, "a claimed room cannot be started again")
++	var uid := inv.slot_uid(inv.count() - 1)
++	var result: Dictionary = solo._rewards.use_item(1, uid, {"generator": gen, "room": rd.coord})
++	check(result["ok"] and str(result["text"]).begins_with("ROOM "), "the TRAP SCAN works: %s" % result["text"])
++
++
++# ---- helpers -----------------------------------------------------------------------------------------
++func _game(seed_value := 1) -> DontBlinkGame:
++	var g := DontBlinkGame.new()
++	g.rng.seed = seed_value
++	return g
++
++
++## Fixed 2 s dark / 2 s watching phases that never change with danger, so timings are exact.
++func _fixed_game(ids: Array) -> DontBlinkGame:
++	var g := _game()
++	g.watch_time = Vector2(2.0, 2.0)
++	g.dark_time = Vector2(2.0, 2.0)
++	g.watch_growth = 0.0
++	g.dark_shrink = 0.0
++	for id in ids:
++		g.join(id)
++	_sim_until(g, func() -> bool: return g.state == DontBlinkGame.State.RUNNING)
++	return g
++
++
++func _sim(g: DontBlinkGame, seconds: float, speeds := {}) -> void:
++	for i in int(round(seconds / DT)):
++		g.tick(DT, speeds)
++
++
++func _sim_until(g: DontBlinkGame, cond: Callable) -> void:
++	for i in 100000:
++		if cond.call():
++			return
++		g.tick(DT, {})
++
++
++func _to_phase(g: DontBlinkGame, watching: bool) -> void:
++	_sim_until(g, func() -> bool: return g.state != DontBlinkGame.State.RUNNING or g.watching == watching)
++
++
++func _timeline(seed_value: int) -> Array:
++	var g := _game(seed_value)
++	g.countdown_time = 0.0
++	g.join(1)
++	var times := []
++	var t := [0.0]
++	g.watching_changed.connect(func(_w: bool) -> void: times.append(snappedf(t[0], 0.001)))
++	for i in 3000:
++		t[0] += DT
++		g.tick(DT)
++	return times
++
++
++func _put(player: Node3D, at: Vector3) -> void:
++	player.global_position = at + Vector3(0.0, 0.05, 0.0)
++	await physics_frame
++
++
++func _frames(n: int) -> void:
++	for i in n:
++		await physics_frame
++
++
++func _wait_for(cond: Callable, max_frames: int) -> void:
++	for i in max_frames:
++		if cond.call():
++			return
++		await physics_frame
++
++
++func check(cond: bool, label: String) -> void:
++	if cond:
++		passed += 1
++		print("  PASS  ", label)
++	else:
++		failed += 1
++		print("  FAIL  ", label)
++
++
++func _title(text: String) -> void:
++	print("\n== ", text)
+diff --git a/tests/reward_inventory_test.gd b/tests/reward_inventory_test.gd
+new file mode 100644
+index 0000000..87f4b9b
+--- /dev/null
++++ b/tests/reward_inventory_test.gd
+@@ -0,0 +1,489 @@
++extends SceneTree
++## Mini-game reward and inventory tests (phase 7).
++##   Stage A: the rules (RewardManager, PlayerInventory, HintBuilder, mini-game room placement), no scene.
++##   Stage B: the real level: mini-game result -> inventory -> HUD slot -> armed protection -> room effect.
++##
++##   godot --headless --path . --script res://tests/reward_inventory_test.gd
++##
++## Exit code 0 = everything passed, 1 = at least one check failed.
++
++const GEN := "res://Levels/The Exit Room/building_generator.gd"
++const LEVEL := "res://Levels/The Exit Room/BaseLevel.tscn"
++const R = preload("res://Gameplay/Rewards/reward_catalog.gd")
++
++var passed := 0
++var failed := 0
++var gen_script: Script
++
++
++func _init() -> void:
++	gen_script = load(GEN)
++	_run()
++
++
++func _run() -> void:
++	t_catalog()
++	t_inventory()
++	t_minigame_rewards()
++	t_information()
++	t_hints_are_vague()
++	t_protection()
++	t_manipulation()
++	t_trading_and_reuse()
++	t_minigame_rooms()
++	await t_level()
++	print("\n%d passed, %d failed" % [passed, failed])
++	quit(1 if failed > 0 else 0)
++
++
++# ---- stage A -----------------------------------------------------------------------------------
++func t_catalog() -> void:
++	_title("catalog and reward rolls")
++	var ok := true
++	for kind in R.ITEMS:
++		var d: Dictionary = R.ITEMS[kind]
++		ok = ok and d.has("name") and d.has("text") and int(d["category"]) in [0, 1, 2]
++	check(ok, "every item has a name, a description and a category")
++	check(R.kinds_in(R.Category.INFORMATION).size() >= 4 and R.kinds_in(R.Category.PROTECTION).size() >= 3
++		and R.kinds_in(R.Category.MANIPULATION).size() >= 2, "all three reward categories have items")
++	var rng := RandomNumberGenerator.new()
++	rng.seed = 5
++	var manip := 0
++	for i in 2000:
++		if int(R.info(R.roll(rng, i % 3, false))["category"]) == R.Category.MANIPULATION:
++			manip += 1
++	check(manip == 0, "no manipulation item is rolled when there is nobody to target")
++	var prot := [0, 0, 0]
++	for z in 3:
++		for i in 3000:
++			if int(R.info(R.roll(rng, z, true))["category"]) == R.Category.PROTECTION:
++				prot[z] += 1
++	check(prot[0] < prot[2], "protection is more common near the exit than near the start (%d vs %d of 3000)" % [prot[0], prot[2]])
++
++
++func t_inventory() -> void:
++	_title("inventory")
++	var inv := PlayerInventory.new()
++	inv.capacity = 2
++	var a := inv.add(R.EXIT_HINT)
++	var b := inv.add(R.POINT_GUARD)
++	check(a > 0 and b > 0 and a != b, "items get distinct ids")
++	check(inv.is_full() and inv.add(R.TRAP_SCAN) == 0, "a full inventory refuses a third item")
++	check(inv.add("nonsense") == 0, "an unknown kind is refused")
++	check(inv.slot_uid(0) == a and inv.slot_uid(1) == b and inv.slot_uid(2) == 0, "slots map to item ids")
++	var snap := inv.snapshot()
++	check(snap.size() == 2 and snap[1]["name"] == "POINT GUARD" and snap[0]["slot"] == 0, "the snapshot has what the HUD needs")
++	check(inv.remove(a) and not inv.remove(a) and not inv.is_full(), "removing frees the slot, only once")
++	check(inv.slot_uid(0) == b, "later items move up")
++
++
++func t_minigame_rewards() -> void:
++	_title("mini-game rewards")
++	var mgr := _mgr()
++	var rng := RandomNumberGenerator.new()
++	rng.seed = 11
++	var lost := mgr.complete_minigame(1, "C4", false, 1, rng)
++	check(not lost["ok"] and lost["reason"] == "lost" and mgr.inventory_of(1).count() == 0, "losing gives nothing")
++	check(not mgr.minigame_claimed(1, "C4"), "a loss does not use up the room's reward")
++	var won := mgr.complete_minigame(1, "C4", true, 1, rng)
++	check(won["ok"] and mgr.inventory_of(1).count() == 1 and R.exists(won["kind"]), "winning adds one item to the inventory")
++	var again := mgr.complete_minigame(1, "C4", true, 1, rng)
++	check(not again["ok"] and again["reason"] == "already_done" and mgr.inventory_of(1).count() == 1, "the same room rewards a player only once")
++	check(mgr.complete_minigame(2, "C4", true, 1, rng)["ok"], "another player can still win that room")
++	check(mgr.complete_minigame(1, "D1", true, 1, rng)["ok"], "another room rewards again")
++	check(not mgr.complete_minigame(99, "C4", true, 1, rng)["ok"], "an unknown player gets nothing")
++	check(mgr.complete_minigame(3, "X1", true, 0, rng, false, R.TRAP_SCAN)["kind"] == R.TRAP_SCAN, "a mini-game can name its own reward instead of the random roll")
++	check(R.exists(mgr.complete_minigame(3, "X2", true, 0, rng, false, "nonsense")["kind"]), "an unknown named reward falls back to the random roll")
++	mgr.complete_minigame(1, "D2", true, 1, rng)
++	mgr.complete_minigame(1, "D3", true, 1, rng)
++	check(mgr.inventory_of(1).is_full(), "the inventory fills up (4 slots)")
++	var full := mgr.complete_minigame(1, "D4", true, 1, rng)
++	check(not full["ok"] and full["reason"] == "inventory_full" and not mgr.minigame_claimed(1, "D4"), "a full inventory refuses the reward and keeps the claim")
++	mgr.discard(1, mgr.inventory_of(1).slot_uid(0))
++	check(mgr.complete_minigame(1, "D4", true, 1, rng)["ok"], "after discarding, the same room can reward again")
++
++
++func t_information() -> void:
++	_title("information items")
++	var gen := _generate(7)
++	var from: Vector2i = gen.start_room
++	var path := HintBuilder.path_to_exit(gen, from)
++	var mgr := _mgr()
++	var ctx := {"generator": gen, "room": from}
++
++	var uid := mgr.inventory_of(1).add(R.TRAP_SCAN)
++	var res := mgr.use_item(1, uid, ctx)
++	var target: Vector2i = path[1]
++	check(res["ok"] and res["data"]["trap"] == (gen.rooms[target].penalty != gen.PENALTY_NONE), "TRAP SCAN tells the truth about the room toward the exit")
++	check(mgr.inventory_of(1).count() == 0, "the item is used up")
++
++	uid = mgr.inventory_of(1).add(R.TRAP_SCAN)
++	check(gen.start_distance > mgr.scan_range, "(test setup) the exit is out of scan range")
++	var far := mgr.use_item(1, uid, {"generator": gen, "room": from, "target_room": gen.exit_room})
++	check(not far["ok"] and far["reason"] == "out_of_range" and mgr.inventory_of(1).count() == 1, "a room out of range is refused and the item is kept")
++	var picked: Vector2i = HintBuilder.neighbours(gen, from)[0]
++	var near := mgr.use_item(1, uid, {"generator": gen, "room": from, "target_room": picked})
++	check(near["ok"] and near["text"].contains(gen.rooms[picked].label), "the player can pick a nearby room to scan")
++
++	uid = mgr.inventory_of(1).add(R.ROOM_INSPECT)
++	var insp := mgr.use_item(1, uid, ctx)
++	var rd = gen.rooms[path[1]]
++	var expect := "NO PENALTY"
++	if rd.penalty == gen.PENALTY_LOSE_POINTS:
++		expect = "LOSES %d" % rd.amount
++	elif rd.penalty == gen.PENALTY_SKIP_ROUND:
++		expect = "LOCKDOWN"
++	check(insp["ok"] and insp["text"].contains(expect), "ROOM INSPECT shows the room's effect (%s)" % insp["text"])
++
++	uid = mgr.inventory_of(1).add(R.EXIT_HINT)
++	var nogen := mgr.use_item(1, uid, {})
++	check(not nogen["ok"] and nogen["reason"] == "no_context" and mgr.inventory_of(1).count() == 1, "an information item without level data fails and is kept")
++
++	# the three vague hints are TRUE, checked against the raw room data from several rooms and seeds
++	var wrong := 0
++	var total := 0
++	for s in range(1, 31):
++		var g := _generate(s)
++		for room: Vector2i in [g.start_room, g.exit_room, g.room_list[g.room_list.size() / 2].coord]:
++			total += 1
++			if not _hint_is_true(g, room, HintBuilder.nearby_hint(g, room), "nearby"):
++				wrong += 1
++			if not _hint_is_true(g, room, HintBuilder.route_hint(g, room), "route"):
++				wrong += 1
++			if not _hint_is_true(g, room, HintBuilder.exit_hint(g), "exit"):
++				wrong += 1
++		g.free()
++	check(wrong == 0, "AHEAD, ROUTE and EXIT hints were true in all %d cases checked" % (total * 3))
++	gen.free()
++
++
++func t_hints_are_vague() -> void:
++	_title("hints are useful but not complete")
++	var leaks := 0
++	var checked := 0
++	for s in range(1, 21):
++		var g := _generate(s)
++		var from: Vector2i = g.start_room
++		for hint in [HintBuilder.nearby_hint(g, from), HintBuilder.route_hint(g, from), HintBuilder.exit_hint(g)]:
++			checked += 1
++			for rd in g.room_list:
++				if str(hint["text"]).contains(rd.label):
++					leaks += 1
++		g.free()
++	check(leaks == 0, "AHEAD, ROUTE and EXIT hints never name a room (%d hints)" % checked)
++	var g := _generate(3)
++	var exact: String = HintBuilder.exit_hint(g)["text"]
++	check(not exact.contains(g.rooms[g.exit_room].label), "the exit hint gives a side, not the exit room")
++	g.free()
++
++
++func t_protection() -> void:
++	_title("protection items")
++	var mgr := _mgr()
++	var inv := mgr.inventory_of(1)
++	check(mgr.resolve_lose_points(1, 2)["amount"] == 2 and not mgr.resolve_lockdown(1), "with nothing armed, effects hit in full")
++
++	var uid := inv.add(R.PENALTY_SHIELD)
++	var armed := mgr.use_item(1, uid, {})
++	check(armed["ok"] and mgr.is_armed(1, R.PENALTY_SHIELD) and inv.count() == 0, "using a SHIELD arms it and uses up the item")
++	check(mgr.armed_names(1) == ["SHIELD"], "the HUD can list what is armed")
++	uid = inv.add(R.PENALTY_SHIELD)
++	var twice := mgr.use_item(1, uid, {})
++	check(not twice["ok"] and twice["reason"] == "already_armed" and inv.count() == 1, "arming the same protection twice is refused and the item kept")
++	check(not mgr.is_armed(2, R.PENALTY_SHIELD), "one player's protection does not protect another")
++	var hit := mgr.resolve_lose_points(1, 2)
++	check(hit["amount"] == 1 and not hit["blocked"] and hit["by"] == R.PENALTY_SHIELD, "a SHIELD takes 1 point off the penalty (2 -> 1)")
++	check(not mgr.is_armed(1, R.PENALTY_SHIELD) and mgr.resolve_lose_points(1, 2)["amount"] == 2, "the SHIELD protects once only")
++	mgr.use_item(1, uid, {})
++	check(mgr.resolve_lose_points(1, 1)["blocked"], "a SHIELD fully blocks a 1-point penalty")
++
++	inv.add(R.POINT_GUARD)
++	mgr.use_item(1, inv.slot_uid(0), {})
++	inv.add(R.PENALTY_SHIELD)
++	mgr.use_item(1, inv.slot_uid(0), {})
++	var g := mgr.resolve_lose_points(1, 3)
++	check(g["blocked"] and g["amount"] == 0 and g["by"] == R.POINT_GUARD and mgr.is_armed(1, R.PENALTY_SHIELD), "a POINT GUARD blocks everything and is used before a SHIELD")
++
++	inv.add(R.LOCKDOWN_BREAKER)
++	mgr.use_item(1, inv.slot_uid(0), {})
++	check(mgr.resolve_lose_points(1, 1)["by"] == R.PENALTY_SHIELD, "a LOCKDOWN BREAKER does not touch points penalties")
++	check(mgr.resolve_lockdown(1) and not mgr.resolve_lockdown(1), "a LOCKDOWN BREAKER absorbs one lockdown only")
++
++
++func t_manipulation() -> void:
++	_title("manipulation items")
++	var gen := _generate(9)
++	var mgr := _mgr()
++	var got: Array = []
++	mgr.tip_received.connect(func(pid: int, text: String) -> void: got.append([pid, text]))
++	var rng := RandomNumberGenerator.new()
++	rng.seed = 3
++	var uid := mgr.inventory_of(1).add(R.FALSE_TIP)
++	var ctx := {"generator": gen, "target_player": 2, "rng": rng, "player_rooms": {2: gen.start_room}}
++	var sent := mgr.use_item(1, uid, ctx)
++	check(sent["ok"] and got.size() == 1 and got[0][0] == 2 and got[0][1] != "", "FALSE TIP delivers a hint to the target player")
++	check(mgr.tips_log.size() == 1 and mgr.tips_log[0]["from"] == 1 and mgr.tips_log[0]["true"] == false, "the host logs who sent it and that it is false")
++
++	var same := 0
++	for s in range(1, 41):
++		var g := _generate(s)
++		var from: Vector2i = g.start_room
++		for pair in [[HintBuilder.nearby_hint(g, from, true), HintBuilder.nearby_hint(g, from)],
++				[HintBuilder.route_hint(g, from, true), HintBuilder.route_hint(g, from)],
++				[HintBuilder.exit_hint(g, true), HintBuilder.exit_hint(g)]]:
++			if pair[0]["text"] == pair[1]["text"] or pair[0]["true"]:
++				same += 1
++		g.free()
++	check(same == 0, "a false tip never matches the true hint of the same kind (120 pairs)")
++
++	uid = mgr.inventory_of(1).add(R.FALSE_TIP)
++	var self_t := mgr.use_item(1, uid, {"generator": gen, "target_player": 1})
++	var nobody := mgr.use_item(1, uid, {"generator": gen, "target_player": 42})
++	check(not self_t["ok"] and not nobody["ok"] and mgr.inventory_of(1).count() == 1, "a manipulation item needs another existing player; failed uses keep the item")
++
++	mgr.inventory_of(1).add(R.INFO_JAMMER)
++	var jam := mgr.use_item(1, mgr.inventory_of(1).slot_uid(1), {"target_player": 2})
++	check(jam["ok"], "JAMMER aimed at player 2")
++	var inv2 := mgr.inventory_of(2)
++	inv2.add(R.PENALTY_SHIELD)
++	check(mgr.use_item(2, inv2.slot_uid(0), {})["ok"] and mgr.is_armed(2, R.PENALTY_SHIELD), "a jammer does not affect protection items")
++	inv2.add(R.EXIT_HINT)
++	inv2.add(R.EXIT_HINT)
++	var jammed := mgr.use_item(2, inv2.slot_uid(0), {"generator": gen})
++	check(jammed["ok"] and jammed["data"].get("jammed", false) and jammed["text"].contains("JAMMED"), "the target's next information item shows nothing")
++	var normal := mgr.use_item(2, inv2.slot_uid(0), {"generator": gen})
++	check(normal["ok"] and not normal["data"].has("jammed") and normal["text"].contains("EXIT"), "the item after that works normally")
++	gen.free()
++
++
++func t_trading_and_reuse() -> void:
++	_title("undecided rules are switches (off by default)")
++	var mgr := _mgr()
++	var uid := mgr.inventory_of(1).add(R.POINT_GUARD)
++	var t := mgr.transfer_item(1, uid, 2)
++	check(not t["ok"] and t["reason"] == "not_tradable" and mgr.inventory_of(1).count() == 1 and mgr.inventory_of(2).count() == 0, "items cannot be traded by default")
++	mgr.tradable = true
++	t = mgr.transfer_item(1, uid, 2)
++	check(t["ok"] and mgr.inventory_of(1).count() == 0 and mgr.inventory_of(2).count() == 1, "with trading switched on the item moves to the other player")
++	for i in 4:
++		mgr.inventory_of(1).add(R.EXIT_HINT)
++	var uid2 := mgr.inventory_of(2).slot_uid(0)
++	check(mgr.transfer_item(2, uid2, 1)["reason"] == "target_full" and mgr.inventory_of(2).count() == 1, "a full inventory cannot receive a traded item")
++
++	var keep := _mgr()
++	keep.reusable = true
++	var gen := _generate(4)
++	var hint := keep.inventory_of(1).add(R.EXIT_HINT)
++	keep.use_item(1, hint, {"generator": gen})
++	check(keep.inventory_of(1).count() == 1, "with re-use switched on the item stays after use")
++	gen.free()
++
++
++func t_minigame_rooms() -> void:
++	_title("optional mini-game rooms")
++	var bad := 0
++	var rooms := 0
++	var with_game := 0
++	var zone_rooms := [0, 0, 0]
++	var zone_games := [0, 0, 0]
++	var changed_effects := 0
++	for s in range(1, 201):
++		var g := _generate(s)
++		var off := _generate(s, 0.0)
++		if _effects(g) != _effects(off):
++			changed_effects += 1
++		for rd in g.room_list:
++			rooms += 1
++			if rd.is_start or rd.is_exit:
++				continue
++			zone_rooms[rd.zone] += 1
++			if rd.minigame:
++				with_game += 1
++				zone_games[rd.zone] += 1
++				if rd.penalty == g.PENALTY_SKIP_ROUND:
++					bad += 1
++		if g.rooms[g.start_room].minigame or g.rooms[g.exit_room].minigame:
++			bad += 1
++		g.free()
++		off.free()
++	var share := float(with_game) / rooms
++	check(bad == 0, "no mini-game in the start room, the exit room or a lockdown room")
++	check(share > 0.05 and share < 0.20, "about 12%% of rooms offer a mini-game (%.1f%%)" % (share * 100.0))
++	check(float(zone_games[0]) / zone_rooms[0] < float(zone_games[1]) / zone_rooms[1], "mini-games are more common in the middle than near the start")
++	check(changed_effects == 0, "mini-games never change the penalties or the route guarantee")
++	var a := _generate(8)
++	var b := _generate(8)
++	check(_games(a) == _games(b), "the same seed puts mini-games in the same rooms")
++	a.free()
++	b.free()
++
++
++# ---- stage B: the real level -------------------------------------------------------------------
++func t_level() -> void:
++	_title("level: mini-game -> inventory -> HUD -> protection")
++	var level: Node = (load(LEVEL) as PackedScene).instantiate()
++	root.add_child(level)
++	current_scene = level
++	for i in 15:
++		await physics_frame
++	var gen: Node3D
++	for n in level.find_children("*", "Node3D", true, false):
++		if "door_records" in n:
++			gen = n
++	var player := get_first_node_in_group("player") as Node3D
++	var solo := level.get_node("SoloMatch")
++	var hud: GameHUD = solo.hud
++	player.set_process(false)
++	player.set_physics_process(false)
++	for rd in gen.room_list:
++		solo._penalised[rd.label] = true                  # no room effects unless a test asks for one
++	check(gen != null and player != null and hud != null and hud.inventory_bar != null, "level, player and HUD with an inventory bar found")
++
++	var game_room = null
++	for rd in gen.room_list:
++		if rd.minigame:
++			game_room = rd
++			break
++	check(game_room != null, "the level has an optional mini-game room")
++	var early: Dictionary = solo.report_minigame_result(game_room.label, true)
++	check(not early["ok"] and early["reason"] == "no_minigame" and solo._rewards.inventory_of(1).count() == 0, "a result cannot be claimed from another room")
++	solo._on_room_entered(game_room, player)
++	check(not solo.report_minigame_result(game_room.label, false)["ok"], "a lost mini-game gives nothing")
++	var win: Dictionary = solo.report_minigame_result(game_room.label, true)
++	check(win["ok"] and solo._rewards.inventory_of(1).count() == 1, "a won mini-game puts an item in the inventory (%s)" % win.get("title", ""))
++	check(hud.inventory_bar.filled_count() == 1, "the HUD shows the item in a slot")
++	check(not solo.report_minigame_result(game_room.label, true)["ok"], "the same room does not reward twice")
++
++	# protection through the HUD button and a real room effect
++	var inv: PlayerInventory = solo._rewards.inventory_of(1)
++	inv.remove(inv.slot_uid(0))
++	inv.add(RewardCatalog.PENALTY_SHIELD)
++	solo._push_state()
++	hud.inventory_bar._buttons[0].pressed.emit()
++	check(solo._rewards.is_armed(1, RewardCatalog.PENALTY_SHIELD), "pressing the slot makes the host arm the SHIELD")
++	check(hud.inventory_bar.filled_count() == 0 and hud.inventory_bar._armed_label.visible, "the slot is used up and the HUD shows it as armed")
++	var lose_room = null                                  # prefer a 2-point room so the reduction is visible
++	for want in [2, 1]:
++		for rd in gen.room_list:
++			if lose_room == null and rd.penalty == gen.PENALTY_LOSE_POINTS and rd.amount == want and not rd.is_start:
++				lose_room = rd
++	solo._points = 10
++	solo._penalised.erase(lose_room.label)
++	solo._on_room_entered(lose_room, player)
++	check(solo._points == 10 - (lose_room.amount - 1), "the room takes %d instead of %d points (10 -> %d)" % [lose_room.amount - 1, lose_room.amount, solo._points])
++	check(not solo._rewards.is_armed(1, RewardCatalog.PENALTY_SHIELD), "the SHIELD is used up by that room")
++
++	inv.add(RewardCatalog.LOCKDOWN_BREAKER)
++	solo._push_state()
++	hud.inventory_bar._buttons[0].pressed.emit()
++	var lock_room = null
++	for rd in gen.room_list:
++		if rd.penalty == gen.PENALTY_SKIP_ROUND:
++			lock_room = rd
++			break
++	var before: int = solo._points
++	solo._penalised.erase(lock_room.label)
++	solo._on_room_entered(lock_room, player)
++	check(not solo._rewards.is_armed(1, RewardCatalog.LOCKDOWN_BREAKER) and solo._points == before, "a LOCKDOWN BREAKER absorbs the lockdown")
++	solo._on_room_entered(lose_room, player)
++	solo._on_room_entered(lose_room, player)
++	check(solo._points == 10 - (lose_room.amount - 1), "walking into the same room again does not charge it again")
++
++
++# ---- helpers -----------------------------------------------------------------------------------
++func _mgr() -> RewardManager:
++	var m := RewardManager.new()
++	for id in [1, 2, 3]:
++		m.add_player(id)
++	return m
++
++
++func _generate(seed_value: int, minigames := 0.12) -> Node3D:
++	var g := Node3D.new()
++	g.set_script(gen_script)
++	g.seed_value = seed_value
++	g.minigame_fraction = minigames
++	g.rng.seed = seed_value
++	g._make_rooms()
++	g._choose_exit()
++	g._choose_start()
++	g._assign_penalties()
++	g._assign_minigames()
++	g._build_links()
++	return g
++
++
++func _effects(g: Node3D) -> String:
++	var parts: Array[String] = ["%s>%s" % [g.start_room, g.exit_room]]
++	for rd in g.room_list:
++		parts.append("%d:%d" % [rd.penalty, rd.amount])
++	return "|".join(parts)
++
++
++func _games(g: Node3D) -> String:
++	var parts: Array[String] = []
++	for rd in g.room_list:
++		if rd.minigame:
++			parts.append(rd.label)
++	return ",".join(parts)
++
++
++## Independent check of a hint against the raw room data.
++func _hint_is_true(g: Node3D, from: Vector2i, hint: Dictionary, kind: String) -> bool:
++	var text: String = hint["text"]
++	if not hint["true"]:
++		return false
++	if kind == "nearby":
++		var ahead := HintBuilder.path_to_exit(g, from).slice(1, 4)
++		if ahead.is_empty():
++			return true
++		var any := false
++		for c in ahead:
++			any = any or g.rooms[c].penalty != g.PENALTY_NONE
++		return text.begins_with("AT LEAST ONE") == any
++	if kind == "route":
++		var names := ["NORTHERN", "EASTERN", "SOUTHERN", "WESTERN"]
++		for d in 4:
++			if text.contains(names[d]):
++				return _danger(g, from, d) > 0
++		if text.begins_with("NO DANGEROUS"):
++			for d in 4:
++				if _danger(g, from, d) > 0:
++					return false
++		return true
++	var centre := (int(g.rooms_per_side) - 1) / 2.0
++	var ox: float = g.exit_room.x - centre
++	var oy: float = g.exit_room.y - centre
++	if text.contains("NORTHERN"):
++		return oy < 0.0
++	if text.contains("SOUTHERN"):
++		return oy > 0.0
++	if text.contains("EASTERN"):
++		return ox > 0.0
++	if text.contains("WESTERN"):
++		return ox < 0.0
++	return absf(ox) < 0.5 and absf(oy) < 0.5
++
++
++func _danger(g: Node3D, from: Vector2i, d: int) -> int:
++	var n: Vector2i = from + RoomGrid.DIR_VECTORS[d]
++	if not g.rooms.has(n):
++		return 0
++	var count := int(g.rooms[n].penalty != g.PENALTY_NONE)
++	for m in HintBuilder.neighbours(g, n):
++		if m != from:
++			count += int(g.rooms[m].penalty != g.PENALTY_NONE)
++	return count
++
++
++func check(cond: bool, label: String) -> void:
++	if cond:
++		passed += 1
++		print("  PASS  ", label)
++	else:
++		failed += 1
++		print("  FAIL  ", label)
++
++
++func _title(text: String) -> void:
++	print("\n== ", text)
+diff --git a/ui/hud/inventory_bar.gd b/ui/hud/inventory_bar.gd
+new file mode 100644
+index 0000000..8ee7ced
+--- /dev/null
++++ b/ui/hud/inventory_bar.gd
+@@ -0,0 +1,81 @@
++class_name InventoryBar
++extends HBoxContainer
++## The player's reward items as numbered slots (bottom centre). Presentation only: the host sends the items
++## with set_items(), and a click or the number keys 1..4 only REQUEST to use a slot via use_requested.
++## The host decides whether the item can be used and what happens.
++##
++## items = [{ "slot": 0, "name": "TRAP SCAN", "text": "tooltip", "category": 0 }, ...]   (filled slots only)
++
++signal use_requested(slot: int)
++
++@export var slot_count := 4
++
++var enabled := true
++
++var _buttons: Array[Button] = []
++var _armed_label: Label
++
++
++func _ready() -> void:
++	mouse_filter = Control.MOUSE_FILTER_IGNORE
++	add_theme_constant_override("separation", UIStyle.SP_2)
++	_armed_label = Label.new()
++	_armed_label.add_theme_font_size_override("font_size", UIStyle.FONT_CAPTION)
++	_armed_label.add_theme_color_override("font_color", UIStyle.AMBER)
++	_armed_label.visible = false
++	add_child(_armed_label)
++	for i in slot_count:
++		var b := Button.new()
++		b.focus_mode = Control.FOCUS_NONE                # keys and clicks never steal player input
++		b.custom_minimum_size = Vector2(124, 36)
++		b.add_theme_font_size_override("font_size", UIStyle.FONT_CAPTION)
++		b.pressed.connect(_on_slot_pressed.bind(i))
++		add_child(b)
++		_buttons.append(b)
++	set_items([], [])
++
++
++func _unhandled_input(event: InputEvent) -> void:
++	if not enabled or not visible:
++		return
++	if event is InputEventKey and event.pressed and not event.echo:
++		var slot: int = event.physical_keycode - KEY_1
++		if slot >= 0 and slot < _buttons.size() and not _buttons[slot].disabled:
++			use_requested.emit(slot)
++			get_viewport().set_input_as_handled()
++
++
++func set_items(items: Array, armed_names: Array) -> void:
++	for i in _buttons.size():
++		_buttons[i].text = "[%d]  -" % (i + 1)
++		_buttons[i].disabled = true
++		_buttons[i].tooltip_text = ""
++	for item: Dictionary in items:
++		var slot: int = item.get("slot", -1)
++		if slot < 0 or slot >= _buttons.size():
++			continue
++		_buttons[slot].text = "[%d]  %s" % [slot + 1, str(item.get("name", "?"))]
++		_buttons[slot].tooltip_text = str(item.get("text", ""))
++		_buttons[slot].disabled = false
++	_armed_label.visible = not armed_names.is_empty()
++	_armed_label.text = "ARMED: " + ", ".join(armed_names)
++
++
++## Number of slots that hold an item.
++func filled_count() -> int:
++	var n := 0
++	for b in _buttons:
++		if not b.disabled:
++			n += 1
++	return n
++
++
++func set_enabled(value: bool) -> void:
++	enabled = value
++	for b in _buttons:
++		b.mouse_filter = Control.MOUSE_FILTER_STOP if value else Control.MOUSE_FILTER_IGNORE
++
++
++func _on_slot_pressed(slot: int) -> void:
++	if enabled:
++		use_requested.emit(slot)
+diff --git a/ui/hud/mini_game_panel.gd b/ui/hud/mini_game_panel.gd
+new file mode 100644
+index 0000000..b2d1363
+--- /dev/null
++++ b/ui/hud/mini_game_panel.gd
+@@ -0,0 +1,86 @@
++class_name MiniGamePanel
++extends PanelContainer
++## The mini-game readout at the top centre of the screen. Presentation only: it shows what the host sends.
++##
++## state = {
++##   "title": "DON'T BLINK",
++##   "phase": "countdown" | "dark" | "watching" | "won" | "lost",
++##   "countdown": 3,             # seconds, for "countdown"
++##   "danger": 2, "max_danger": 5,
++##   "time_left": -1.0,          # seconds; -1 = no time limit
++##   "event": "THE EYE SAW YOU", # short message, "" = none
++## }
++
++var _title: Label
++var _status: Label
++var _event: Label
++var _danger_bar: ProgressBar
++var _danger_label: Label
++
++
++func _ready() -> void:
++	mouse_filter = Control.MOUSE_FILTER_IGNORE
++	add_theme_stylebox_override("panel", UIStyle.box(UIStyle.HUD_BG, UIStyle.METAL, UIStyle.BORDER, UIStyle.SP_4, UIStyle.SP_3))
++	var box := VBoxContainer.new()
++	box.add_theme_constant_override("separation", UIStyle.SP_2)
++	add_child(box)
++	_title = _label(UIStyle.FONT_CAPTION, UIStyle.TEXT_MUTED)
++	_status = _label(UIStyle.FONT_TITLE, UIStyle.TEXT)
++	_event = _label(UIStyle.FONT_LABEL, UIStyle.RED)
++	_danger_label = _label(UIStyle.FONT_CAPTION, UIStyle.TEXT_MUTED)
++	_danger_bar = ProgressBar.new()
++	_danger_bar.show_percentage = false
++	_danger_bar.custom_minimum_size = Vector2(260, 10)
++	_danger_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
++	for c in [_title, _status, _event, _danger_label, _danger_bar]:
++		box.add_child(c)
++	visible = false
++
++
++func set_state(state: Dictionary) -> void:
++	visible = true
++	_title.text = str(state.get("title", "")).to_upper()
++	var danger: int = state.get("danger", 0)
++	var max_danger: int = maxi(state.get("max_danger", 1), 1)
++	var colour := UIStyle.TEXT
++	var text := ""
++	match str(state.get("phase", "")):
++		"countdown":
++			text = "GET READY: %d" % int(state.get("countdown", 0))
++			colour = UIStyle.AMBER
++		"dark":
++			text = "THE EYE IS SHUT: MOVE"
++			colour = Color(0.35, 0.9, 0.45)
++		"watching":
++			text = "THE EYE IS WATCHING: FREEZE"
++			colour = UIStyle.RED
++		"won":
++			text = "YOU MADE IT"
++			colour = Color(0.35, 0.9, 0.45)
++		"lost":
++			text = "THE EYE FOUND YOU ALL"
++			colour = UIStyle.RED
++	var left: float = state.get("time_left", -1.0)
++	if left >= 0.0 and str(state.get("phase", "")) in ["dark", "watching"]:
++		text += "   (%d s)" % int(left)
++	_status.text = text
++	_status.add_theme_color_override("font_color", colour)
++	_event.text = str(state.get("event", ""))
++	_event.visible = _event.text != ""
++	_danger_label.text = "DANGER %d / %d" % [danger, max_danger]
++	_danger_bar.max_value = max_danger
++	_danger_bar.value = danger
++	_danger_bar.modulate = UIStyle.AMBER.lerp(UIStyle.RED, float(danger) / max_danger)
++
++
++func clear() -> void:
++	visible = false
++
++
++func _label(size: int, colour: Color) -> Label:
++	var l := Label.new()
++	l.add_theme_font_size_override("font_size", size)
++	l.add_theme_color_override("font_color", colour)
++	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
++	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
++	return l
+diff --git a/ui/hud/solo_match.gd b/ui/hud/solo_match.gd
+index 3791d3e..82522cd 100644
+--- a/ui/hud/solo_match.gd
++++ b/ui/hud/solo_match.gd
+@@ -6,6 +6,10 @@ extends Node
+ @export var starting_points := 10
+ @export var door_cost := 1
+ @export var door_capacity := 2
++## Reward items (see Gameplay/Rewards). Trading and re-use are undecided in the design, so they are off.
++@export var reward_slots := 4
++@export var rewards_tradable := false
++@export var rewards_reusable := false
+ 
+ var _points := 0
+ var _eliminated := false
+@@ -16,10 +20,20 @@ var _doors_crossed := 0
+ var _points_spent := 0
+ var _start_msec := 0
+ var _pending_door: StandardDoor
++var _rewards := RewardManager.new()
++var _current_room                           # RoomData of the room the player is in
++var _offered := {}                          # room label -> true: the mini-game offer was already shown
++var _minigames := {}                        # room label -> DontBlinkRoom
++
++const PLAYER_ID := 1
+ 
+ 
+ func _ready() -> void:
+ 	_points = starting_points
++	_rewards.slots = reward_slots
++	_rewards.tradable = rewards_tradable
++	_rewards.reusable = rewards_reusable
++	_rewards.add_player(PLAYER_ID)
+ 	_start_msec = Time.get_ticks_msec()
+ 	await get_tree().process_frame
+ 
+@@ -46,6 +60,9 @@ func _ready() -> void:
+ 	generator.room_entered.connect(_on_room_entered)
+ 	generator.exit_reached.connect(_on_exit_reached)
+ 	hud.victory_continue.connect(func() -> void: get_tree().reload_current_scene())
++	hud.item_use_requested.connect(_on_item_use_requested)
++	_current_room = generator.rooms.get(generator.start_room)
++	_setup_minigames()
+ 	_push_state()
+ 
+ 
+@@ -104,16 +121,99 @@ func _on_room_entered(room, body: Node3D) -> void:
+ 	if body != player or _eliminated or _finished:
+ 		return
+ 	_room_label = room.label
++	_current_room = room
+ 	if not _penalised.has(room.label):
+ 		_penalised[room.label] = true
+-		if room.penalty == generator.PENALTY_LOSE_POINTS:
+-			_spend(room.amount, "ROOM " + room.label)
+-			return
+-		elif room.penalty == generator.PENALTY_SKIP_ROUND:
++		_apply_room_effect(room)
++	if room.minigame and not _eliminated and not _offered.has(room.label) and not _rewards.minigame_claimed(PLAYER_ID, room.label):
++		_offered[room.label] = true
++		hud.notify({"type": "info", "title": "MINI-GAME: DON'T BLINK", "detail": "ROOM " + room.label + ": STEP ON THE AMBER PAD. OPTIONAL"})
++	_push_state()
++
++
++## A room's effect hits the player once, when they first enter it. Armed protections are applied here.
++func _apply_room_effect(room) -> void:
++	if room.penalty == generator.PENALTY_LOSE_POINTS:
++		var hit := _rewards.resolve_lose_points(PLAYER_ID, room.amount)
++		if hit["by"] != "":
++			hud.notify({"type": "protected", "title": "PENALTY BLOCKED" if hit["blocked"] else "PENALTY REDUCED",
++				"detail": "ROOM " + room.label})
++		if int(hit["amount"]) > 0:
++			_spend(int(hit["amount"]), "ROOM " + room.label)
++	elif room.penalty == generator.PENALTY_SKIP_ROUND:
++		if _rewards.resolve_lockdown(PLAYER_ID):
++			hud.notify({"type": "protected", "title": "LOCKDOWN AVOIDED", "detail": "ROOM " + room.label})
++		else:
+ 			hud.notify({"type": "lockdown", "rounds": room.amount, "detail": "ROOM " + room.label})
++
++
++## Host API for mini-games: the game played in `room_label` ended with won / lost. A win puts one reward item in
++## the inventory. Only valid while the player is in that room, so a result cannot be claimed from afar.
++## Returns the RewardManager result ({ok, reason, kind, title, text, ...}).
++func report_minigame_result(room_label: String, won: bool, reward_kind := "") -> Dictionary:
++	var room = _room_by_label(room_label)
++	if room == null or not room.minigame or _current_room == null or _current_room.label != room_label \
++			or _eliminated or _finished:
++		return {"ok": false, "reason": "no_minigame", "kind": "", "uid": 0, "title": "", "text": "NO MINI-GAME HERE", "data": {}}
++	var rng := RandomNumberGenerator.new()
++	rng.seed = hash("reward:%d:%s:%d" % [generator.seed_value, room_label, PLAYER_ID])
++	var result := _rewards.complete_minigame(PLAYER_ID, room_label, won, room.zone, rng, false, reward_kind)   # solo: nobody to target
++	if result["ok"]:
++		hud.notify({"type": "info", "title": "REWARD: " + str(result["title"]), "detail": str(result["text"])})
++	else:
++		hud.notify({"type": "info", "title": "NO REWARD", "detail": str(result["text"])})
++	_push_state()
++	return result
++
++
++## One Don't Blink game per mini-game room. The host reads the result and decides the reward.
++func _setup_minigames() -> void:
++	for rd in generator.room_list:
++		if not rd.minigame:
++			continue
++		var game_room := DontBlinkRoom.new()
++		game_room.name = "DontBlink_" + rd.label
++		generator.add_child(game_room)
++		game_room.setup(generator, rd, hash("dontblink:%d:%s" % [generator.seed_value, rd.label]))
++		game_room.player_won.connect(_on_minigame_won)
++		game_room.hud_state_changed.connect(hud.set_minigame)
++		_minigames[rd.label] = game_room
++
++
++## A player reached the exit pad of a Don't Blink room: the reward is a TRAP SCAN (a hint about a nearby room).
++func _on_minigame_won(room_label: String, player_id: int) -> void:
++	if player_id != PLAYER_ID:
++		return
++	var result := report_minigame_result(room_label, true, RewardCatalog.TRAP_SCAN)
++	if result["ok"] or result["reason"] == "already_done":
++		_minigames[room_label].mark_claimed()
++
++
++## The player pressed an inventory slot: the host validates the use and shows the outcome.
++func _on_item_use_requested(slot: int) -> void:
++	if _eliminated or _finished:
++		return
++	var uid := _rewards.inventory_of(PLAYER_ID).slot_uid(slot)
++	if uid == 0:
++		return
++	var rng := RandomNumberGenerator.new()
++	rng.seed = hash("use:%d:%d:%d" % [generator.seed_value, uid, _doors_crossed])
++	var room_coord: Vector2i = _current_room.coord if _current_room != null else generator.start_room
++	var result := _rewards.use_item(PLAYER_ID, uid, {"generator": generator, "room": room_coord, "rng": rng})
++	if result["ok"]:
++		hud.notify({"type": "info", "title": str(result["title"]), "detail": str(result["text"])})
++	else:
++		hud.notify({"type": "info", "title": "CANNOT USE ITEM", "detail": str(result["text"])})
+ 	_push_state()
+ 
+ 
++func _room_by_label(label: String):
++	for rd in generator.room_list:
++		if rd.label == label:
++			return rd
++	return null
++
++
+ @warning_ignore("integer_division")
+ func _on_exit_reached(body: Node3D) -> void:
+ 	if body != player or _eliminated or _finished:
+@@ -143,6 +243,7 @@ func _spend(amount: int, detail: String) -> void:
+ 
+ 
+ func _push_state() -> void:
++	hud.set_inventory(_rewards.inventory_of(PLAYER_ID).snapshot(), _rewards.armed_names(PLAYER_ID))
+ 	hud.apply_state({
+ 		"local_id": 1, "round": 1, "phase": "Explore", "starting_points": starting_points,
+ 		"players": [{

@@ -2,7 +2,7 @@
 
 [ext_resource type="PackedScene" uid="uid://bu1surqhya0ql" path="res://Player/player.tscn" id="1_n2on0"]
 [ext_resource type="Script" uid="uid://bq6jq33tuqj7w" path="res://Levels/The Exit Room/building_generator.gd" id="2_fq6q4"]
-[ext_resource type="PackedScene" uid="uid://cv52f8gql1152" path="res://ui/hud/game_hud.tscn" id="3_gyqtl"]
+[ext_resource type="PackedScene" path="res://ui/hud/game_hud.tscn" id="3_gyqtl"]
 [ext_resource type="Script" uid="uid://w8be6j528v1f" path="res://ui/door/door_hud_bridge.gd" id="4_l5681"]
 [ext_resource type="Script" uid="uid://bt2yoytmplhcv" path="res://ui/hud/solo_match.gd" id="5_ed4ln"]
 

@@ -29,6 +29,8 @@ signal closed
 @onready var cancel_button: Button = %CancelButton
 @onready var confirm_button: Button = %ConfirmButton
 
+## Set to false by GameHUD when a level has no point transfers.
+var enabled := true
 var is_open := false
 
 var _local_alive := false
@@ -73,7 +75,7 @@ func set_players(players: Array, local_id: int) -> void:
 
 
 func open() -> void:
-	if is_open or not _local_alive or _my_points <= 0 or _others.is_empty():
+	if not enabled or is_open or not _local_alive or _my_points <= 0 or _others.is_empty():
 		return
 	is_open = true
 	_previous_mouse_mode = Input.mouse_mode
