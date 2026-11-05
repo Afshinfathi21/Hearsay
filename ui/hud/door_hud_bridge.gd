@@ -29,4 +29,4 @@ func _on_modal_closed() -> void:
 
 
 func _on_door_focused(door: StandardDoor) -> void:
-	hud.show_door_prompt(door.get_hud_info())
+	hud.show_door_prompt(door.get_hud_info(player.global_position))

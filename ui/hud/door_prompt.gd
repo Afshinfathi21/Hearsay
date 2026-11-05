@@ -19,6 +19,7 @@ extends PanelContainer
 @onready var cost_label: Label = %CostLabel
 @onready var capacity_label: Label = %CapacityLabel
 @onready var status_label: Label = %StatusLabel
+@onready var room_label: Label = %RoomLabel
 
 var _last_info := {}
 var _last_points := -1
@@ -42,6 +43,8 @@ func show_for_door(info: Dictionary, player_points: int) -> void:
 	var locked: bool = info.get("locked", false)
 	var remaining: int = info.get("available", maxi(capacity - reserved, 0))
 	var is_exit: bool = info.get("exit", false)
+
+	room_label.text = "BEHIND: " + str(info.get("room_behind", "UNKNOWN"))
 
 	var usable := false
 	var message := ""

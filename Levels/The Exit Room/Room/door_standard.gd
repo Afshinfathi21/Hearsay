@@ -57,6 +57,10 @@ var is_locked := false
 ## A generated seal is distinct from a temporary administrative lockdown.
 var generation_locked := false
 var generation_lock_type := "none"
+var room_a_label := ""
+var room_b_label := ""
+var room_a_center := Vector3.ZERO
+var room_b_center := Vector3.ZERO
 ## True for the one real exit door (the building generator sets it).
 var is_exit := false:
 	set(value):
@@ -220,11 +224,21 @@ func set_round_state(new_capacity: int, _new_reserved: int = 0) -> void:
 	_refresh_monitor()
 
 
-func get_hud_info() -> Dictionary:
+func set_adjacent_room_info(a_label: String, b_label: String, a_center: Vector3, b_center: Vector3) -> void:
+	room_a_label = a_label
+	room_b_label = b_label
+	room_a_center = a_center
+	room_b_center = b_center
+
+
+func get_hud_info(observer_position := Vector3.ZERO) -> Dictionary:
+	var room_behind := room_b_label
+	if observer_position.distance_squared_to(room_b_center) < observer_position.distance_squared_to(room_a_center):
+		room_behind = room_a_label
 	return {"cost": cost, "capacity": capacity, "reserved": reserved, "passed": passed,
 		"available": available, "locked": is_locked or generation_locked,
 		"administrative_locked": is_locked, "generation_locked": generation_locked,
-		"lock_type": generation_lock_type, "exit": is_exit}
+		"lock_type": generation_lock_type, "exit": is_exit, "room_behind": room_behind}
 
 
 func _physics_process(delta: float) -> void:

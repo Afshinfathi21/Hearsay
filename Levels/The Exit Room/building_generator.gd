@@ -696,6 +696,12 @@ func _collect_door_records(doors: Array[Node3D]) -> void:
 			continue
 		rec.door = d
 		rec.monitors = d.get_meta("monitors")
+		var room_a: RoomData = rooms.get(rec.room_a)
+		var room_b: RoomData = rooms.get(rec.room_b)
+		if room_a != null:
+			var a_center := get_room_floor_center(room_a)
+			var b_center := get_room_floor_center(room_b) if room_b != null else d.global_position + (d.global_position - a_center).normalized() * 8.0
+			d.set_adjacent_room_info(room_a.label, room_b.label if room_b != null else "OUTSIDE", a_center, b_center)
 		if not rec.is_exit:
 			set_door_state(rec, rec.capacity)
 		if rec.is_exit:

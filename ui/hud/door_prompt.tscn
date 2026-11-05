@@ -42,6 +42,13 @@ size_flags_vertical = 4
 theme_type_variation = &"LabelTitle"
 text = "PASS THROUGH"
 
+[node name="RoomLabel" type="Label" parent="VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelCaption"
+theme_override_font_sizes/font_size = 14
+text = "BEHIND: C4"
+
 [node name="HSeparator" type="HSeparator" parent="VBox"]
 layout_mode = 2
 
