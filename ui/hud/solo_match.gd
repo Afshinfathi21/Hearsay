@@ -5,7 +5,6 @@ extends Node
 @export var player: Node3D
 @export var starting_points := 10
 @export var door_cost := 1
-@export var door_capacity := 2
 ## Reward items (see Gameplay/Rewards). Trading and re-use are undecided in the design, so they are off.
 @export var reward_slots := 4
 @export var rewards_tradable := false
@@ -51,7 +50,7 @@ func _ready() -> void:
 			continue
 		rec.door.cost = door_cost
 		rec.door.passage_validator = _can_cross
-		generator.set_door_state(rec, door_capacity, 0)
+		generator.set_door_state(rec, rec.capacity, 0)
 		rec.door.interaction_requested.connect(_on_door_interaction_requested)
 		rec.door.passage_completed.connect(_on_door_passage_completed.bind(rec.door))
 		rec.door.passage_cancelled.connect(_on_door_passage_cancelled.bind(rec.door))

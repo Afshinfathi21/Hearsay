@@ -33,6 +33,9 @@ const ZONE_DENSITY := [0.4, 1.0, 1.4]
 ## Chance multiplier for an optional mini-game in each zone (times minigame_fraction): mostly the middle of the way.
 const MINIGAME_DENSITY := [0.5, 1.0, 0.8]
 
+const DOOR_LOCK_NONE := "none"
+const DOOR_LOCK_SEALED := "sealed"
+
 const N := RoomGrid.Dir.N
 const E := RoomGrid.Dir.E
 const S := RoomGrid.Dir.S
@@ -67,6 +70,11 @@ const PROPS := {
 @export var door_cost := 1                   # points every ordinary door costs
 @export var min_route_margin := 2            # points that must still be left after the cheapest route to the exit
 @export_range(0.0, 1.0) var minigame_fraction := 0.12   # share of rooms with an OPTIONAL mini-game (reward item for a win)
+## Door economy: every crossing consumes one place; the safe route supports all 4 players once.
+@export_range(1, 4, 1) var safe_route_door_capacity := 4
+@export_range(1, 4, 1) var optional_door_min_capacity := 1
+@export_range(1, 4, 1) var optional_door_max_capacity := 3
+@export_range(0.0, 0.6, 0.01) var locked_door_fraction := 0.18
 @export var draw_distance := 35.0            # doors, monitors and props are hidden beyond this many metres
 
 
@@ -92,6 +100,9 @@ class DoorRecord extends RefCounted:
 	var door: Node3D                         # StandardDoor
 	var monitors: Array = []                 # [front DoorMonitor, rear DoorMonitor]
 	var is_exit := false
+	var capacity := 1
+	var is_locked := false
+	var lock_type := DOOR_LOCK_NONE
 
 
 var rng := RandomNumberGenerator.new()
@@ -180,7 +191,8 @@ func get_layout() -> Dictionary:
 			"zone": rd.zone, "dist_start": rd.dist_start, "dist_exit": rd.dist_exit, "minigame": rd.minigame})
 	var ds := []
 	for r in door_records:
-		ds.append({"a": [r.room_a.x, r.room_a.y], "b": [r.room_b.x, r.room_b.y], "exit": r.is_exit})
+		ds.append({"a": [r.room_a.x, r.room_a.y], "b": [r.room_b.x, r.room_b.y], "exit": r.is_exit,
+			"capacity": r.capacity, "locked": r.is_locked, "lock_type": r.lock_type})
 	return {"rooms_per_side": rooms_per_side, "room_cells": room_cells, "seed": seed_value,
 		"start": [start_room.x, start_room.y], "exit_room": [exit_room.x, exit_room.y], "exit_dir": exit_dir,
 		"hole": [hole_room.x, hole_room.y] if has_hole else null, "start_distance": start_distance,
@@ -209,13 +221,22 @@ func get_door_between(a: Vector2i, b: Vector2i) -> DoorRecord:
 
 ## Shows `count` on both monitors of a door and lights that many of the 4 capacity pips.
 func set_door_capacity(record: DoorRecord, count: int) -> void:
-	for m in record.monitors:
-		m.show_number(count)
-		m.set_capacity(count)
-
-func set_door_state(record: DoorRecord, capacity: int, reserved: int) -> void:
+	record.capacity = maxi(count, 0)
 	if record.door != null and not record.is_exit:
-		record.door.set_round_state(capacity, reserved)
+		record.door.set_round_state(record.capacity)
+		record.door.set_generation_lock(record.is_locked, record.lock_type)
+	else:
+		for m in record.monitors:
+			m.show_number(record.capacity)
+			m.set_capacity(record.capacity)
+
+func set_door_state(record: DoorRecord, capacity: int, _reserved: int = 0) -> void:
+	if record.is_exit:
+		return
+	record.capacity = maxi(capacity, 0)
+	if record.door != null:
+		record.door.set_round_state(record.capacity)
+		record.door.set_generation_lock(record.is_locked, record.lock_type)
 # ---- rooms --------------------------------------------------------------------------------------
 func _make_rooms() -> void:
 	var R := rooms_per_side
@@ -538,7 +559,96 @@ func _build_links() -> Array:
 				_add_door_link(links, Vector2i(rx * k + mid, rz * k + k - 1), S, here, here + Vector2i.DOWN)
 	var ec := _exit_cell()
 	door_edges[_ek(ec, exit_dir)] = true
+	_assign_door_capacities()
 	return links
+
+
+## The validated safe route is never locked and has enough places for all 4 players to cross once.
+## Optional doors get 1-3 places; seals are accepted only if all rooms remain reachable and
+## every room keeps at least two usable doors (the exit door counts for the exit room).
+func _assign_door_capacities() -> void:
+	var safe_edges := {}
+	for i in range(safe_route.size() - 1):
+		safe_edges[_room_edge_key(safe_route[i], safe_route[i + 1])] = true
+
+	var candidates: Array[DoorRecord] = []
+	var low := mini(optional_door_min_capacity, optional_door_max_capacity)
+	var high := maxi(optional_door_min_capacity, optional_door_max_capacity)
+	for rec in door_records:
+		var key := _room_edge_key(rec.room_a, rec.room_b)
+		rec.is_locked = false
+		rec.lock_type = DOOR_LOCK_NONE
+		if safe_edges.has(key):
+			rec.capacity = safe_route_door_capacity
+		else:
+			rec.capacity = rng.randi_range(low, high)
+			candidates.append(rec)
+
+	for i in range(candidates.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var tmp: DoorRecord = candidates[i]
+		candidates[i] = candidates[j]
+		candidates[j] = tmp
+
+	var locked_edges := {}
+	for rec in candidates:
+		if rng.randf() >= locked_door_fraction:
+			continue
+		var key := _room_edge_key(rec.room_a, rec.room_b)
+		var trial := locked_edges.duplicate()
+		trial[key] = true
+		if not _room_graph_connected(trial) or not _room_degrees_valid(trial):
+			continue
+		locked_edges[key] = true
+		rec.capacity = 0
+		rec.is_locked = true
+		rec.lock_type = DOOR_LOCK_SEALED
+
+
+func _room_edge_key(a: Vector2i, b: Vector2i) -> String:
+	var left := "%d,%d" % [a.x, a.y]
+	var right := "%d,%d" % [b.x, b.y]
+	if left > right:
+		var tmp := left
+		left = right
+		right = tmp
+	return left + "|" + right
+
+
+func _room_graph_connected(blocked_edges: Dictionary) -> bool:
+	if room_list.is_empty():
+		return true
+	var seen := {room_list[0].coord: true}
+	var queue: Array[Vector2i] = [room_list[0].coord]
+	while not queue.is_empty():
+		var current: Vector2i = queue.pop_front()
+		for rec in door_records:
+			if blocked_edges.has(_room_edge_key(rec.room_a, rec.room_b)):
+				continue
+			var next := Vector2i(-1, -1)
+			if rec.room_a == current:
+				next = rec.room_b
+			elif rec.room_b == current:
+				next = rec.room_a
+			else:
+				continue
+			if not seen.has(next):
+				seen[next] = true
+				queue.append(next)
+	return seen.size() == room_list.size()
+
+
+func _room_degrees_valid(blocked_edges: Dictionary) -> bool:
+	for rd in room_list:
+		var degree := 1 if rd.is_exit else 0
+		for rec in door_records:
+			if blocked_edges.has(_room_edge_key(rec.room_a, rec.room_b)):
+				continue
+			if rec.room_a == rd.coord or rec.room_b == rd.coord:
+				degree += 1
+		if degree < 2:
+			return false
+	return true
 
 
 func _add_door_link(links: Array, a: Vector2i, dir: int, room_a: Vector2i, room_b: Vector2i) -> void:
@@ -586,6 +696,8 @@ func _collect_door_records(doors: Array[Node3D]) -> void:
 			continue
 		rec.door = d
 		rec.monitors = d.get_meta("monitors")
+		if not rec.is_exit:
+			set_door_state(rec, rec.capacity)
 		if rec.is_exit:
 			exit_door = d
 			exit_door.set_locked(exit_locked)

@@ -54,6 +54,9 @@ var available: int:
 var is_open := false
 ## Administrative lock (lockdown). Not the same as "full": a full door has available == 0.
 var is_locked := false
+## A generated seal is distinct from a temporary administrative lockdown.
+var generation_locked := false
+var generation_lock_type := "none"
 ## True for the one real exit door (the building generator sets it).
 var is_exit := false:
 	set(value):
@@ -109,7 +112,7 @@ func interact(body: Node3D = null) -> void:
 			else:
 				open()
 		return
-	if body == null or is_locked:
+	if body == null or is_locked or generation_locked:
 		return
 	if has_reservation(body) or available > 0:
 		interaction_requested.emit(self, body)
@@ -118,7 +121,7 @@ func interact(body: Node3D = null) -> void:
 ## Host: give this body a place. The door opens and only reservation holders can pass.
 ## The host must already have checked the player (alive, enough points, one reservation at a time).
 func reserve_passage(body: Node3D) -> bool:
-	if body == null or not is_instance_valid(body) or is_exit or is_locked:
+	if body == null or not is_instance_valid(body) or is_exit or is_locked or generation_locked:
 		return false
 	var id := body.get_instance_id()
 	if _reservations.has(id) or available <= 0:
@@ -188,6 +191,28 @@ func set_locked(locked: bool) -> void:
 	_refresh_monitor()
 
 
+## Set or clear a lock assigned by procedural generation. Sealed doors have zero capacity.
+func set_generation_lock(locked: bool, lock_type := "sealed") -> void:
+	generation_locked = locked
+	generation_lock_type = lock_type if locked else "none"
+	if locked:
+		capacity = 0
+		passed = 0
+	_refresh_monitor()
+
+
+## A key, reward or minigame can open a generated seal by granting fresh places.
+func unlock_generation_lock(new_capacity: int) -> bool:
+	if not generation_locked or new_capacity <= 0:
+		return false
+	generation_locked = false
+	generation_lock_type = "none"
+	capacity = new_capacity
+	passed = 0
+	_refresh_monitor()
+	return true
+
+
 ## Host: set the places for this round. The second argument is kept for older callers;
 ## reservations are always counted by the door itself.
 func set_round_state(new_capacity: int, _new_reserved: int = 0) -> void:
@@ -197,7 +222,9 @@ func set_round_state(new_capacity: int, _new_reserved: int = 0) -> void:
 
 func get_hud_info() -> Dictionary:
 	return {"cost": cost, "capacity": capacity, "reserved": reserved, "passed": passed,
-		"available": available, "locked": is_locked, "exit": is_exit}
+		"available": available, "locked": is_locked or generation_locked,
+		"administrative_locked": is_locked, "generation_locked": generation_locked,
+		"lock_type": generation_lock_type, "exit": is_exit}
 
 
 func _physics_process(delta: float) -> void:
@@ -314,7 +341,7 @@ func _on_finished(_name: StringName) -> void:
 ## Monitors show the capacity digits and one pip per available place. Lamp and digits turn red
 ## when the door is locked or full. The exit door's monitors keep their green EXIT sign.
 func _refresh_monitor() -> void:
-	var unavailable := is_locked or (not is_exit and available <= 0)
+	var unavailable := is_locked or generation_locked or (not is_exit and available <= 0)
 	if _light_mat != null:
 		_light_mat.emission = RED if unavailable else AMBER
 	if is_exit:

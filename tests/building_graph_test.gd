@@ -22,6 +22,8 @@ func _init() -> void:
 		"near_lockdown": 0, "near_big": 0, "recorded_mismatch": 0, "repaired": 0, "left_sum": 0, "left_min": 999,
 		"dist_sum": 0, "dist_max": 0, "dist_min": 999, "nondeterministic": 0,
 		"zone_rooms": [0, 0, 0], "zone_pen": [0, 0, 0], "zone_cost": [0, 0, 0], "lockdown": 0, "lose": 0,
+		"door_unreachable": 0, "door_dead_end": 0, "safe_door_invalid": 0, "locked_doors": 0,
+		"door_capacities": [0, 0, 0, 0, 0],
 	}
 	var budget := 10
 	var margin := 2
@@ -40,7 +42,11 @@ func _init() -> void:
 	check(st.unreachable == 0, "every room is reachable from the start room")
 	check(st.dead_end == 0, "no room has fewer than 2 doors (no dead ends)")
 	check(st.exit_unreachable == 0, "the exit room is reachable from the start room")
-	check(st.nondeterministic == 0, "same seed gives the same start, exit and effects")
+	check(st.nondeterministic == 0, "same seed gives the same rooms, effects and door assignments")
+	check(st.door_unreachable == 0, "generated locks never disconnect any room")
+	check(st.door_dead_end == 0, "every room keeps at least two usable doors")
+	check(st.safe_door_invalid == 0, "every safe-route door has capacity for all 4 players")
+	check(st.locked_doors > 0, "some optional doors are generated as sealed doors")
 
 	print("\n== economy and effect rules")
 	check(st.start_too_far == 0, "the start room is never farther than the budget allows")
@@ -58,6 +64,7 @@ func _init() -> void:
 	print("  points left on the validated route: avg %.1f, min %d" % [float(st.left_sum) / n, st.left_min])
 	print("  effects removed by validation: %.1f per building" % (float(st.repaired) / n))
 	print("  effects: %d lose-points, %d lockdown" % [st.lose, st.lockdown])
+	print("  doors: %d sealed; capacities 1/2/3/4 = %s" % [st.locked_doors, st.door_capacities])
 	var names := ["near start", "middle", "near exit"]
 	for i in 3:
 		print("  %-10s: effect rate %.0f%%, avg lose-points cost %.2f per effect room" % [names[i],
@@ -85,19 +92,40 @@ func _signature(g: Node3D) -> String:
 	var parts: Array[String] = ["%s>%s" % [g.start_room, g.exit_room]]
 	for rd in g.room_list:
 		parts.append("%s:%d:%d" % [rd.coord, rd.penalty, rd.amount])
+	for rec in g.door_records:
+		parts.append("D%s:%d:%s" % [g._room_edge_key(rec.room_a, rec.room_b), rec.capacity, rec.is_locked])
 	return "|".join(parts)
 
 
 func _analyse(g: Node3D, st: Dictionary) -> void:
 	st.seeds += 1
 	var adj := {}
+	var open_adj := {}
 	for rd in g.room_list:
 		adj[rd.coord] = []
+		open_adj[rd.coord] = []
 	for rec in g.door_records:
 		if rec.is_exit:
 			continue
 		adj[rec.room_a].append(rec.room_b)
 		adj[rec.room_b].append(rec.room_a)
+		st.door_capacities[rec.capacity] += 1
+		if rec.is_locked:
+			st.locked_doors += 1
+		else:
+			open_adj[rec.room_a].append(rec.room_b)
+			open_adj[rec.room_b].append(rec.room_a)
+
+	var open_reach := _reach(open_adj, g.start_room, Vector2i(-99, -99))
+	if open_reach.size() != g.room_list.size():
+		st.door_unreachable += 1
+	for rd in g.room_list:
+		if open_adj[rd.coord].size() + (1 if rd.is_exit else 0) < 2:
+			st.door_dead_end += 1
+	for i in range(g.safe_route.size() - 1):
+		var safe_door = g.get_door_between(g.safe_route[i], g.safe_route[i + 1])
+		if safe_door == null or safe_door.is_locked or safe_door.capacity < g.safe_route_door_capacity:
+			st.safe_door_invalid += 1
 
 	var reach := _reach(adj, g.start_room, Vector2i(-99, -99))
 	if reach.size() != g.room_list.size():

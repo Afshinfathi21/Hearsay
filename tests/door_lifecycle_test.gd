@@ -44,6 +44,9 @@ func _run() -> void:
 		if rec.door != null and not rec.is_exit:
 			door = rec.door
 			break
+	if door != null:
+		door.set_generation_lock(false)
+		door.set_round_state(2)
 
 	await t_setup()
 	await t_full_lifecycle()
@@ -76,7 +79,7 @@ func _run() -> void:
 func t_setup() -> void:
 	_title("setup")
 	check(gen != null and door != null and player != null, "level, door and player found")
-	check(door.capacity == 2 and door.cost == 1, "door has capacity 2 and cost 1 (set by SoloMatch)")
+	check(door.capacity == 2 and door.cost == 1 and not door.generation_locked, "test door has capacity 2 and is unlocked")
 	check(solo._points == 10, "player starts with 10 points")
 	check(not door.is_open and door.reserved == 0, "door starts closed with no reservation")
 
