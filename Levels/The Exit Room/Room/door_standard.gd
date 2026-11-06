@@ -272,11 +272,17 @@ func _on_passage_exited(body: Node3D) -> void:
 	var crossed := body.is_inside_tree() and _side_of(body) != float(_entered_side[id])
 	if crossed:
 		passed += 1
-	_remove_reservation(id)
-	if crossed:
+		_remove_reservation(id)
 		passage_completed.emit(body)
-	else:
-		passage_cancelled.emit(body)         # backed out on the side they came from
+		_close_if_empty()
+		return
+	# The moving door can push a player out of PassageZone before they cross the
+	# doorway. Do not interpret that animation-induced exit as backing out: keep
+	# their reservation and the door open so they can continue or re-enter.
+	if _opening:
+		return
+	_remove_reservation(id)
+	passage_cancelled.emit(body)         # backed out on the side they came from
 	_close_if_empty()
 
 
