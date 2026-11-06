@@ -44,7 +44,7 @@ theme_override_constants/separation = 12
 [node name="TitleLabel" type="Label" parent="Center/Panel/VBox"]
 layout_mode = 2
 theme_type_variation = &"LabelTitle"
-text = "MULTIPLAYER"
+text = "STEAM MULTIPLAYER"
 
 [node name="HSeparator" type="HSeparator" parent="Center/Panel/VBox"]
 layout_mode = 2
@@ -62,7 +62,7 @@ theme_override_constants/separation = 16
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
 theme_type_variation = &"LabelMuted"
-text = "NAME"
+text = "PLAYER NAME"
 
 [node name="NameEdit" type="LineEdit" parent="Center/Panel/VBox/ConnectPanel/NameRow"]
 unique_name_in_owner = true
@@ -71,61 +71,36 @@ size_flags_horizontal = 3
 placeholder_text = "Player"
 max_length = 16
 
-[node name="AddressRow" type="HBoxContainer" parent="Center/Panel/VBox/ConnectPanel"]
-layout_mode = 2
-theme_override_constants/separation = 16
-
-[node name="Label" type="Label" parent="Center/Panel/VBox/ConnectPanel/AddressRow"]
-custom_minimum_size = Vector2(120, 0)
-layout_mode = 2
-theme_type_variation = &"LabelMuted"
-text = "ADDRESS"
-
-[node name="AddressEdit" type="LineEdit" parent="Center/Panel/VBox/ConnectPanel/AddressRow"]
+[node name="HostButton" type="Button" parent="Center/Panel/VBox/ConnectPanel"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
-size_flags_horizontal = 3
-placeholder_text = "127.0.0.1"
-
-[node name="PortRow" type="HBoxContainer" parent="Center/Panel/VBox/ConnectPanel"]
-layout_mode = 2
-theme_override_constants/separation = 16
-
-[node name="Label" type="Label" parent="Center/Panel/VBox/ConnectPanel/PortRow"]
-custom_minimum_size = Vector2(120, 0)
-layout_mode = 2
-theme_type_variation = &"LabelMuted"
-text = "PORT"
-
-[node name="PortEdit" type="LineEdit" parent="Center/Panel/VBox/ConnectPanel/PortRow"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "7777"
-max_length = 5
-
-[node name="ConnectButtons" type="HBoxContainer" parent="Center/Panel/VBox/ConnectPanel"]
-layout_mode = 2
-theme_override_constants/separation = 12
-
-[node name="HostButton" type="Button" parent="Center/Panel/VBox/ConnectPanel/ConnectButtons"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
 theme_type_variation = &"ButtonPrimary"
-text = "HOST A GAME"
+text = "CREATE STEAM LOBBY"
 
-[node name="JoinButton" type="Button" parent="Center/Panel/VBox/ConnectPanel/ConnectButtons"]
+[node name="JoinLabel" type="Label" parent="Center/Panel/VBox/ConnectPanel"]
+layout_mode = 2
+theme_type_variation = &"LabelMuted"
+text = "OR JOIN A FRIEND"
+
+[node name="LobbyIdEdit" type="LineEdit" parent="Center/Panel/VBox/ConnectPanel"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
-text = "JOIN"
+placeholder_text = "Steam Lobby ID"
+max_length = 20
+
+[node name="JoinButton" type="Button" parent="Center/Panel/VBox/ConnectPanel"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+text = "JOIN BY LOBBY ID"
 
 [node name="StatusLabel" type="Label" parent="Center/Panel/VBox/ConnectPanel"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 24)
+custom_minimum_size = Vector2(0, 36)
 layout_mode = 2
 theme_type_variation = &"LabelMuted"
+autowrap_mode = 2
 
 [node name="RoomPanel" type="VBoxContainer" parent="Center/Panel/VBox"]
 unique_name_in_owner = true
@@ -137,7 +112,7 @@ theme_override_constants/separation = 12
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"LabelCaption"
-text = "LOBBY   /   1 PLAYER"
+text = "STEAM LOBBY"
 
 [node name="PlayerRows" type="VBoxContainer" parent="Center/Panel/VBox/RoomPanel"]
 unique_name_in_owner = true

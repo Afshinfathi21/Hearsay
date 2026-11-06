@@ -1,22 +1,16 @@
 class_name MenuRoot
 extends Control
-## All the screens outside a match: main menu, lobby, settings, loading, results, plus the
-## connection banner. Put ONE of these in your start scene (inside a CanvasLayer).
-## Presentation only: it tells your code what the player asked for (signals) and your
-## code tells it what to show (the show_* / set_* functions).
 
-# --- what the player asked for ---
-signal host_requested(player_name: String, port: int)
-signal join_requested(player_name: String, address: String, port: int)
+signal host_requested(player_name: String)
+signal join_requested(player_name: String, lobby_id: String)
 signal ready_toggled(ready: bool)
-signal start_requested               # the host pressed START MATCH
-signal leave_lobby_requested         # leave the room you are connected to
-signal back_to_lobby_requested       # from the results screen
-signal leave_to_menu_requested       # the player went to the main menu (disconnect if connected)
-signal retry_requested               # "TRY AGAIN" after a lost connection
+signal start_requested
+signal leave_lobby_requested
+signal back_to_lobby_requested
+signal leave_to_menu_requested
+signal retry_requested
 signal quit_requested
 
-## How many players the host needs before START MATCH works (1 lets you test alone).
 @export var min_players_to_start := 2
 
 @onready var main_menu: MainMenu = %MainMenu
@@ -54,7 +48,6 @@ func _ready() -> void:
 	show_main_menu()
 
 
-# --- screens ---
 func show_main_menu() -> void:
 	_show(main_menu)
 
@@ -64,8 +57,8 @@ func show_lobby_connect(status := "") -> void:
 	_show(lobby_menu)
 
 
-func show_lobby_room(players: Array, local_id: int, is_host: bool) -> void:
-	lobby_menu.show_room(players, local_id, is_host)
+func show_lobby_room(players: Array, local_id: int, is_host: bool, lobby_id := "") -> void:
+	lobby_menu.show_room(players, local_id, is_host, lobby_id)
 	_show(lobby_menu)
 
 
@@ -90,19 +83,16 @@ func set_loading_status(text: String) -> void:
 	loading_screen.set_status(text)
 
 
-## info: see match_results.gd
 func show_results(info: Dictionary) -> void:
 	match_results.show_results(info)
 	_show(match_results)
 
 
-## Hide every menu screen (the match is on screen). The connection banner stays available.
 func show_none() -> void:
 	for s in _screens:
 		s.visible = false
 
 
-# --- connection ---
 func set_connection(kind: String, detail := "") -> void:
 	connection_overlay.set_status(kind, detail)
 
