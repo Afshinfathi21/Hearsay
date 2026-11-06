@@ -72,23 +72,24 @@ func _on_door_interaction_requested(door: StandardDoor, body: Node3D) -> void:
 		return
 	if door.has_reservation(player):
 		if door.release_passage(player):
-			hud.notify({"type": "info", "title": "RESERVATION CANCELLED", "detail": "YOUR PLACE WAS RELEASED"})
+			hud.notify({"type": "info", "title": "RESERVATION CANCELLED", "detail": "YOUR PLACE WAS RELEASED; DOOR COST IS NOT REFUNDED"})
 		return
 	if _pending_door != null:
 		hud.notify({"type": "info", "title": "ONE DOOR AT A TIME", "detail": "CANCEL YOUR CURRENT RESERVATION FIRST"})
 		return
-	if _points < door.cost:
-		hud.notify({"type": "info", "title": "NOT ENOUGH POINTS", "detail": "YOU CANNOT RESERVE THIS DOOR"})
+	if _points <= door.cost:
+		hud.notify({"type": "info", "title": "NOT ENOUGH POINTS", "detail": "YOU MUST KEEP AT LEAST ONE POINT TO OPEN A DOOR"})
 		return
 	if not door.reserve_passage(player):
 		return
 	_pending_door = door
+	_spend(door.cost, "DOOR")
 
 
-## Asked by the door when the reserved player enters the doorway. Points can change between
-## reserving and crossing (a transfer, a penalty), so they are checked again here.
+## Asked by the door when the paid reservation holder enters the doorway.
+## The cost was already deducted when the reservation opened the door.
 func _can_cross(body: Node3D, door: StandardDoor) -> bool:
-	return body == player and not _eliminated and not _finished and _points >= door.cost
+	return body == player and _pending_door == door and not _eliminated and not _finished
 
 
 func _on_door_reservation_expired(body: Node3D) -> void:
@@ -108,7 +109,6 @@ func _on_door_passage_completed(body: Node3D, door: StandardDoor) -> void:
 		return
 	_pending_door = null
 	_doors_crossed += 1
-	_spend(door.cost, "DOOR")
 
 
 func _on_door_passage_cancelled(body: Node3D, door: StandardDoor) -> void:

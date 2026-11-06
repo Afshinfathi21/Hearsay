@@ -3,15 +3,16 @@ extends Node3D
 ## Drives Doors/door_standard.glb. RoomGrid.spawn_doors() attaches this to the imported scene.
 ##
 ## An ordinary door is a limited-capacity passage, not a door players open freely:
-##   closed -> reservation -> opening -> crossing -> payment -> closing -> reset
+##   closed -> paid reservation -> opening -> crossing -> closing -> reset
 ##
 ##   * capacity is PER ROUND: every completed crossing uses one place until reset_round().
 ##     available = capacity - passed - reserved.
 ##   * reserve_passage() is called by the host (the game controller) after it validated the player.
 ##     It opens the door and lets that player (only) through the PassageGate barrier.
 ##   * Crossing is detected by the PassageZone: the player must enter on one side and leave on the
-##     other. Proximity alone never counts. passage_completed fires once, AFTER the crossing; the host
-##     charges the cost then. Expired, cancelled, backed-out or rejected reservations cost nothing.
+##     other. Proximity alone never counts. The host charges the cost when it grants the reservation;
+##     that payment is not refunded if the reservation expires, is cancelled or the player backs out.
+##     passage_completed fires once after a successful crossing.
 ##   * The door closes by itself as soon as no reservation is left. A player who already passed the
 ##     middle of the doorway is never released or locked out; they finish crossing safely.
 ##   * The real exit door is separate: it has no capacity or cost and simply toggles open/closed.
@@ -37,7 +38,7 @@ const RED := Color("E5201B")
 const INTERACT_LAYER := 1 << 1          # physics layer 2: the ray that finds the door
 const GATE_LAYER := 1                   # physics layer 1: what the player collides with
 
-## Points one crossing costs (charged by the host, after the crossing).
+## Points one passage reservation costs (charged by the host when the door opens for that player).
 @export var cost := 1
 ## Seconds a reservation stays valid if the player does not cross.
 @export_range(1.0, 60.0, 0.5) var reservation_timeout := 15.0
@@ -79,7 +80,7 @@ var _light_mat: StandardMaterial3D
 var _passage_zone: Area3D
 var _gate: StaticBody3D
 
-# Instance ID -> reserved body. Nothing is charged until the body crosses.
+# Instance ID -> body that has paid for and reserved a place.
 var _reservations: Dictionary = {}
 # Instance ID -> time (door clock) when the reservation expires.
 var _expires: Dictionary = {}
@@ -282,6 +283,14 @@ func _on_passage_exited(body: Node3D) -> void:
 ## The reserved body is in the doorway: ask the host whether the crossing is still valid.
 func _begin_crossing(body: Node3D) -> void:
 	var id := body.get_instance_id()
+	# A stale or duplicated reservation must never let the number of completed crossings
+	# exceed the capacity shown on the monitor.
+	if passed >= capacity:
+		_remove_reservation(id)
+		passage_rejected.emit(body)
+		passage_cancelled.emit(body)
+		_close_if_empty()
+		return
 	if passage_validator.is_valid() and not bool(passage_validator.call(body, self)):
 		_remove_reservation(id)
 		passage_rejected.emit(body)

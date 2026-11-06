@@ -85,17 +85,17 @@ func t_setup() -> void:
 
 
 func t_full_lifecycle() -> void:
-	_title("full lifecycle: reserve -> open -> cross -> pay -> close")
+	_title("full lifecycle: pay -> reserve -> open -> cross -> close")
 	await reset_state()
 	await place(1.0, 2.5)
 	door.interact(player)
 	check(door.reserved == 1, "interact reserves a place")
-	check(solo._points == 10, "nothing is charged when the place is reserved")
+	check(solo._points == 9, "door cost is charged when the reservation opens the door")
 	check(await wait_until(func() -> bool: return door.is_open, 4.0), "door opens after the reservation")
 	var reached := await walk(1.0, 2.5)
 	check(reached, "reserved player walks through the open door")
 	await frames(5)
-	check(solo._points == 9, "charged exactly once, after crossing (10 -> %d)" % solo._points)
+	check(solo._points == 9, "crossing does not charge a second time (points %d)" % solo._points)
 	check(door.reserved == 0, "reservation is gone after crossing")
 	check(await wait_until(func() -> bool: return not door.is_open, 4.0), "door closes by itself after the last crossing")
 
@@ -109,7 +109,7 @@ func t_timeout() -> void:
 	check(door.reserved == 1, "reserved")
 	await wait_seconds(1.6)
 	check(door.reserved == 0, "reservation released after the timeout")
-	check(solo._points == 10, "an expired reservation costs nothing")
+	check(solo._points == 9, "an expired reservation does not refund the opening cost")
 	check(solo._pending_door == null, "host forgets the expired reservation")
 	check(await wait_until(func() -> bool: return not door.is_open, 4.0), "door closes after the timeout")
 
@@ -122,7 +122,7 @@ func t_cancel() -> void:
 	check(door.reserved == 1, "reserved")
 	door.interact(player)
 	check(door.reserved == 0, "pressing interact again releases the place")
-	check(solo._points == 10, "a cancelled reservation costs nothing")
+	check(solo._points == 9, "cancelling does not refund the opening cost")
 
 
 func t_back_out() -> void:
@@ -136,7 +136,7 @@ func t_back_out() -> void:
 	await walk_to_local_z(2.5 * 1.0)         # back out the way we came
 	await frames(5)
 	check(door.reserved == 0, "backing out on the same side releases the reservation")
-	check(solo._points == 10, "backing out costs nothing")
+	check(solo._points == 9, "backing out does not refund the opening cost")
 
 
 func t_unreserved_blocked() -> void:
@@ -220,12 +220,11 @@ func t_points_drop_before_crossing() -> void:
 	await place(1.0, 2.5)
 	door.interact(player)
 	await wait_until(func() -> bool: return door.is_open, 4.0)
-	solo._points = 0                          # e.g. transferred away while holding the reservation
+	check(solo._points == 9, "the cost was already deducted before crossing")
 	var reached := await walk(1.0, 2.5)
-	check(not reached, "the crossing is refused and the player stays blocked")
-	check(door.reserved == 0 and passed_of(door) == 0, "reservation dropped, nothing counted")
-	check(solo._points == 0, "nothing was charged")
-	solo._points = 10
+	check(reached, "a paid reservation can finish crossing")
+	check(door.reserved == 0 and passed_of(door) == 1, "crossing is counted exactly once")
+	check(solo._points == 9, "crossing does not deduct the cost again")
 
 
 func t_exit_door() -> void:
@@ -276,7 +275,7 @@ func t_reserve_inside_doorway() -> void:
 	check(await wait_until(func() -> bool: return door.is_open, 4.0), "door opens")
 	var reached := await walk(1.0, 2.5)
 	await frames(5)
-	check(reached and solo._points == 9, "the crossing is still detected and charged once (points %d)" % solo._points)
+	check(reached and solo._points == 9, "the crossing is detected after the opening cost was paid (points %d)" % solo._points)
 
 
 func t_interact_key_via_hitscan() -> void:
@@ -319,10 +318,11 @@ func t_two_reservations_share_door() -> void:
 	door.interact(player)
 	check(door.reserved == 2 and door.available == 0, "both places reserved, none available")
 	check(not door.reserve_passage(make_dummy()), "a third reservation is refused (capacity 2)")
+	check(not door.reserve_passage(make_dummy()), "a fourth reservation is also refused (capacity 2)")
 	await wait_until(func() -> bool: return door.is_open, 4.0)
 	check(await walk(1.0, 2.5), "the player crosses")
 	await frames(5)
-	check(solo._points == 9, "only the player who crossed is charged (10 -> %d)" % solo._points)
+	check(solo._points == 9, "the local player paid on opening; the other reservation has no local controller")
 	check(door.reserved == 1 and door.is_open, "door stays open while the other reservation is still held")
 	door.release_passage(other)
 	check(await wait_until(func() -> bool: return not door.is_open, 4.0), "door closes right after the last reservation ends")
@@ -345,7 +345,7 @@ func t_mid_crossing_is_protected() -> void:
 	check(door.is_open or door._target_open, "the door does not close while the player is crossing")
 	await walk_to_local_z(-2.5)               # finish the crossing
 	await frames(5)
-	check(solo._points == 9, "the crossing is charged once, after it finished (10 -> %d)" % solo._points)
+	check(solo._points == 9, "the crossing does not charge a second time (points %d)" % solo._points)
 	check(door.reserved == 0, "reservation is gone after the crossing")
 	check(await wait_until(func() -> bool: return not door.is_open, 4.0), "door closes after the player finished crossing")
 
@@ -358,7 +358,7 @@ func t_cross_from_other_side() -> void:
 	await wait_until(func() -> bool: return door.is_open, 4.0)
 	var reached := await walk(-1.0, 2.5)
 	await frames(5)
-	check(reached and solo._points == 9 and passed_of(door) == 1, "a crossing from the back side is detected and charged once")
+	check(reached and solo._points == 9 and passed_of(door) == 1, "a crossing from the back side is detected after paying on opening")
 
 
 func t_closes_immediately() -> void:
@@ -421,7 +421,7 @@ func t_spam_interact() -> void:
 	door.interact(player)
 	check(door.reserved == 0 and door.available == 2 and solo._pending_door == null, "the next press cancels it: no leftovers anywhere")
 	check(await wait_until(func() -> bool: return not door.is_open, 5.0), "the door ends up closed")
-	check(solo._points == 10, "no points moved")
+	check(solo._points == 9, "the reservation cost remains paid after cancellation")
 
 
 func t_freed_reservation_holder() -> void:

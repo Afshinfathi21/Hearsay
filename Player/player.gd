@@ -31,7 +31,7 @@ extends CharacterBody3D
 @export var camera_shoulder_offset : float = 0.35
 ## Starting tilt. More negative = camera higher, looking down more.
 ## Layers the camera should bump into. 0 = camera ignores everything (start here).
-@export_flags_3d_physics var camera_collision_mask : int = 0
+@export_flags_3d_physics var camera_collision_mask : int = 1
 @export_range(-89.0, 30.0) var start_pitch_deg : float = -15.0
 @export_range(-89.0, 0.0) var pitch_min_deg : float = -70.0   # looking down
 @export_range(0.0, 89.0) var pitch_max_deg : float = 30.0     # looking up
