@@ -80,9 +80,10 @@ func _on_door_interaction_requested(door: StandardDoor, body: Node3D) -> void:
 	if _points <= door.cost:
 		hud.notify({"type": "info", "title": "NOT ENOUGH POINTS", "detail": "YOU MUST KEEP AT LEAST ONE POINT TO OPEN A DOOR"})
 		return
-	if not door.reserve_passage(player):
-		return
 	_pending_door = door
+	if not door.reserve_passage(player):
+		_pending_door = null
+		return
 	_spend(door.cost, "DOOR")
 
 

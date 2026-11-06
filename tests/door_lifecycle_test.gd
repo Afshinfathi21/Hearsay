@@ -421,7 +421,7 @@ func t_spam_interact() -> void:
 	door.interact(player)
 	check(door.reserved == 0 and door.available == 2 and solo._pending_door == null, "the next press cancels it: no leftovers anywhere")
 	check(await wait_until(func() -> bool: return not door.is_open, 5.0), "the door ends up closed")
-	check(solo._points == 9, "the reservation cost remains paid after cancellation")
+	check(solo._points == 4, "six successful openings consumed six points (points %d)" % solo._points)
 
 
 func t_freed_reservation_holder() -> void:
