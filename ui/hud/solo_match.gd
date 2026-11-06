@@ -77,9 +77,6 @@ func _on_door_interaction_requested(door: StandardDoor, body: Node3D) -> void:
 	if _pending_door != null:
 		hud.notify({"type": "info", "title": "ONE DOOR AT A TIME", "detail": "CANCEL YOUR CURRENT RESERVATION FIRST"})
 		return
-	if _points <= door.cost:
-		hud.notify({"type": "info", "title": "NOT ENOUGH POINTS", "detail": "YOU MUST KEEP AT LEAST ONE POINT TO OPEN A DOOR"})
-		return
 	_pending_door = door
 	if not door.reserve_passage(player):
 		_pending_door = null
@@ -231,11 +228,11 @@ func _on_exit_reached(body: Node3D) -> void:
 
 
 func _spend(amount: int, detail: String) -> void:
-	_points = maxi(_points - amount, 0)
+	_points = _points - amount
 	_points_spent += amount
 	hud.notify({"type": "points_deducted", "amount": amount, "detail": detail})
 	_push_state()
-	if _points <= 0 and not _eliminated:
+	if _points < 0 and not _eliminated:
 		_eliminated = true
 		hud.show_elimination({"reason": "YOU RAN OUT OF POINTS", "points": 0, "spectate": false})
 		await get_tree().create_timer(6.0).timeout

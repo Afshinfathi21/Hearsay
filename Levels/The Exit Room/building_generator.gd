@@ -43,6 +43,7 @@ const W := RoomGrid.Dir.W
 const WALL_FACE := 0.15
 const FLOOR_SLAB := 0.2
 const OUTSIDE := Vector2i(-1, -1)
+var seed_value := randi()             # 0 = new building every run
 
 const PROPS := {
 	"panel": {"path": "res://Assets/Props/prop_electrical_panel.glb", "h": 1.45},
@@ -58,7 +59,6 @@ const PROPS := {
 
 @export var rooms_per_side := 7              # 7 rooms x 3 cells x 4 m = 84 m: fits a 100 m base with an 8 m outside strip
 @export var room_cells := 3                  # cells per room side; keep it ODD so the door can sit at the exact centre
-@export var seed_value := 12345              # 0 = new building every run
 @export var base_floor: CSGBox3D             # optional: the building is centred on it and sits on its top face
 @export var player: Node3D                   # optional: moved to the first spawn point
 @export_range(0.0, 1.0) var penalty_fraction := 0.35

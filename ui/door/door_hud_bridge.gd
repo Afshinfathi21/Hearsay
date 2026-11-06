@@ -10,7 +10,6 @@ extends Node
 ## You can still assign them in the Inspector instead.
 ##
 ## StandardDoor provides get_hud_info() (cost, capacity, reserved, locked, exit).
-
 @export var hitscan: Node3D
 @export var hud: GameHUD
 ## The Player node (it needs the input_blocked variable from player.gd).
