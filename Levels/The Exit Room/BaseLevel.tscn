@@ -50,7 +50,6 @@ camera_distance = 3.0
 start_first_person = true
 camera_pivot_height = 0.7
 camera_shoulder_offset = 0.4
-camera_collision_mask = 1
 pitch_min_deg = -30.0
 face_camera_direction = false
 
@@ -58,6 +57,8 @@ face_camera_direction = false
 layer = 10
 
 [node name="GameHUD" parent="UI" unique_id=1829863703 instance=ExtResource("3_gyqtl")]
+show_round_info = false
+show_player_list = false
 
 [node name="DoorHudBridge" type="Node" parent="." unique_id=1568823894]
 script = ExtResource("4_l5681")
