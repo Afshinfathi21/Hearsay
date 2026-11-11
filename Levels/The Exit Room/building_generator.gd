@@ -46,15 +46,15 @@ const OUTSIDE := Vector2i(-1, -1)
 var seed_value := randi()             # 0 = new building every run
 
 const PROPS := {
-	"panel": {"path": "res://Assets/Props/prop_electrical_panel.glb", "h": 1.45},
-	"camera": {"path": "res://Assets/Props/prop_camera_wall.glb", "h": 2.55},
-	"emergency": {"path": "res://Assets/Props/prop_emergency_light.glb", "h": 2.45},
-	"speaker": {"path": "res://Assets/Props/prop_speaker_wall.glb", "h": 2.65},
-	"plate": {"path": "res://Assets/Props/prop_number_plate.glb", "h": 1.65},
-	"wall_panel": {"path": "res://Assets/Environment/env_wall_panel.glb", "h": 1.5},
-	"grille": {"path": "res://Assets/Environment/env_grille_wall.glb", "h": 0.55},
-	"vent": {"path": "res://Assets/Props/prop_ceiling_vent.glb"},
-	"hazard": {"path": "res://Assets/Props/prop_floor_marking_hazard.glb"},
+	"panel": {"path": "res://assets/the_exit_room/props/prop_electrical_panel.glb", "h": 1.45},
+	"camera": {"path": "res://assets/the_exit_room/props/prop_camera_wall.glb", "h": 2.55},
+	"emergency": {"path": "res://assets/the_exit_room/props/prop_emergency_light.glb", "h": 2.45},
+	"speaker": {"path": "res://assets/the_exit_room/props/prop_speaker_wall.glb", "h": 2.65},
+	"plate": {"path": "res://assets/the_exit_room/props/prop_number_plate.glb", "h": 1.65},
+	"wall_panel": {"path": "res://assets/the_exit_room/environment/env_wall_panel.glb", "h": 1.5},
+	"grille": {"path": "res://assets/the_exit_room/environment/env_grille_wall.glb", "h": 0.55},
+	"vent": {"path": "res://assets/the_exit_room/props/prop_ceiling_vent.glb"},
+	"hazard": {"path": "res://assets/the_exit_room/props/prop_floor_marking_hazard.glb"},
 }
 
 @export var rooms_per_side := 7              # 7 rooms x 3 cells x 4 m = 84 m: fits a 100 m base with an 8 m outside strip
@@ -155,7 +155,7 @@ func _ready() -> void:
 	var posts := RoomGrid.build_posts(_gm, self)
 	post_positions.assign(posts.get_meta("positions"))
 
-	var doors := RoomGrid.spawn_doors(_gm, self, load("res://Assets/Doors/door_standard.glb"), load("res://Assets/Monitors/door_monitor.glb"))
+	var doors := RoomGrid.spawn_doors(_gm, self, load("res://assets/the_exit_room/doors/door_standard.glb"), load("res://assets/the_exit_room/monitors/door_monitor.glb"))
 	_collect_door_records(doors)
 
 	_props_root = Node3D.new()

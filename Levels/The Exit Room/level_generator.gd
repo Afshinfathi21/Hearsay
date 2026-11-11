@@ -51,7 +51,7 @@ func _ready() -> void:
 			cells.append(Vector2i(x, y))
 	RoomGrid.place_rooms(gm, cells, links)
 
-	var doors := RoomGrid.spawn_doors(gm, self, load("res://Assets/Doors/door_standard.glb"), load("res://Assets/Monitors/door_monitor.glb"))
+	var doors := RoomGrid.spawn_doors(gm, self, load("res://assets/the_exit_room/doors/door_standard.glb"), load("res://assets/the_exit_room/monitors/door_monitor.glb"))
 	_add_lights(gm)
 	_limit_draw_distance(doors)
 

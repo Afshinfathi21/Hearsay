@@ -14,9 +14,9 @@ const PITCH := 4.0
 const HEIGHT := 3.0
 const MONITOR_HEIGHT := 2.625
 const WALL_FACE := 0.15              # half wall thickness
-const KIT := "res://Assets/Environment/"
-const DOOR := "res://Assets/Doors/door_standard.glb"
-const MONITOR := "res://Assets/Monitors/door_monitor.glb"
+const KIT := "res://assets/the_exit_room/environment/"
+const DOOR := "res://assets/the_exit_room/doors/door_standard.glb"
+const MONITOR := "res://assets/the_exit_room/monitors/door_monitor.glb"
 
 var doors := {}                      # edge key -> {door, monitor_front, monitor_rear}
 var _cache := {}

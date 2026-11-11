@@ -24,7 +24,7 @@ enum Dir { N, E, S, W }
 const CELL_SIZE := Vector3(4.0, 3.5, 4.0)          # 3.5 = 0.2 floor slab + 3.0 interior + 0.3 ceiling slab, so levels stack cleanly
 const LIBRARY_PATH := "res://MeshLibraries/room_library.meshlib"            # rooms WITH corner posts
 const LIBRARY_OPEN_PATH := "res://MeshLibraries/room_library_open.meshlib"    # rooms WITHOUT posts (use build_posts)
-const POST_SCENE_PATH := "res://Assets/Environment/env_wall_post.glb"
+const POST_SCENE_PATH := "res://assets/the_exit_room/environment/env_wall_post.glb"
 const POST_SIZE := Vector3(0.3, 3.0, 0.3)
 const DIR_VECTORS := [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]   # N, E, S, W
 const LETTERS := "WDO"

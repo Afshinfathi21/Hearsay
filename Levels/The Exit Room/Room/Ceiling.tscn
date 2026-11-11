@@ -1,5 +1,5 @@
 [gd_scene format=3 uid="uid://bxvj06dbl34fm"]
 
-[ext_resource type="PackedScene" uid="uid://bov3xkg4ui60a" path="res://Assets/the exit level/Environment/env_ceiling_4m.glb" id="1_sl4e1"]
+[ext_resource type="PackedScene" uid="uid://bov3xkg4ui60a" path="res://assets/the_exit_room/environment/env_ceiling_4m.glb" id="1_sl4e1"]
 
 [node name="env_ceiling_4m" unique_id=409121786 instance=ExtResource("1_sl4e1")]
