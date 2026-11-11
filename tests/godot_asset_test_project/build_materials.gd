@@ -4,8 +4,8 @@ extends SceneTree
 ## (Textures must be imported first: run `godot --headless --import` once.)
 ## Editing this file and re-running is the way to retune the whole library.
 
-const DIR := "res://Materials/"
-const TEX := "res://Materials/Textures/"
+const DIR := "res://assets/common/materials/"
+const TEX := "res://assets/common/materials/Textures/"
 
 
 func _tex(file: String) -> Texture2D:

@@ -19,14 +19,14 @@ func dump(n: Node, depth := 0) -> void:
 func _init() -> void:
 	# 1) every library material loads, has the right class and its textures
 	print("=== LIBRARY ===")
-	var dir := DirAccess.open("res://Materials/")
+	var dir := DirAccess.open("res://assets/common/materials/")
 	var names: Array[String] = []
 	for f in dir.get_files():
 		if f.ends_with(".tres"):
 			names.append(f)
 	names.sort()
 	for f in names:
-		var m := load("res://Materials/" + f) as Material
+		var m := load("res://assets/common/materials/" + f) as Material
 		var tex := ""
 		if m is ORMMaterial3D:
 			var o := m as ORMMaterial3D

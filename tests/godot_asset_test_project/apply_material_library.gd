@@ -3,7 +3,7 @@ extends EditorScenePostImport
 ## Import script: swaps the flat glTF materials for the textured library materials of the
 ## same name. Self-contained on purpose (no class_name lookups) so it works on first import.
 
-const DIR := "res://Materials/"
+const DIR := "res://assets/common/materials/"
 
 
 func _post_import(scene: Node) -> Object:

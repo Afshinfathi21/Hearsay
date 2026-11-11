@@ -9,7 +9,7 @@ extends RefCounted
 ##  2. At runtime, on any instanced scene:  MaterialLibrary.apply(instance)
 ##     (non-destructive: uses surface override materials).
 
-const DIR := "res://Materials/"
+const DIR := "res://assets/common/materials/"
 static var _cache := {}
 
 
