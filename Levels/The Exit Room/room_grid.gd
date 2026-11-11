@@ -15,7 +15,7 @@ extends RefCounted
 ##   RoomGrid.setup(gm)
 ##   RoomGrid.place_rooms(gm, [Vector2i(0,0), Vector2i(1,0)],
 ##       [{"a": Vector2i(0,0), "b": Vector2i(1,0), "type": RoomGrid.Side.DOOR}])
-##   RoomGrid.spawn_doors(gm, self, load("res://Doors/door_standard.glb"), load("res://Monitors/door_monitor.glb"))
+##   RoomGrid.spawn_doors(gm, self, load("res://assets/the_exit_room/doors/door_standard.glb"), load("res://assets/the_exit_room/monitors/door_monitor.glb"))
 ##   RoomGrid.add_lights(gm, self)
 
 enum Side { WALL = 0, DOOR = 1, OPEN = 2 }

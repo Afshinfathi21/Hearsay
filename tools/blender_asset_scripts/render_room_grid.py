@@ -4,7 +4,7 @@ import os, sys, math
 import bpy, bmesh
 from mathutils import Vector
 
-ROOT = "/home/claude/asset_pack"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import blender_pbr as pb
 argv = sys.argv[sys.argv.index("--") + 1:]
@@ -38,7 +38,7 @@ assert ids == {(0, 0): 9, (1, 0): 8, (1, 1): 54, (2, 0): 2}
 bpy.ops.wm.read_factory_settings(use_empty=True)
 sc = bpy.context.scene
 col = sc.collection
-bpy.ops.import_scene.gltf(filepath=os.path.join(ROOT, "Environment/room_grid/room_variants.glb"))
+bpy.ops.import_scene.gltf(filepath=os.path.join(ROOT, "assets/the_exit_room/environment/room_grid/room_variants.glb"))
 variants = {o.name: o for o in bpy.data.objects if o.type == 'MESH'}
 LET = "WDO"
 for c in cells:

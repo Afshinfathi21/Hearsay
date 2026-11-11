@@ -3,7 +3,7 @@ The shipped materials are the Godot .tres files; this mirrors them so previews m
 import os
 import bpy
 
-TEX = "/home/claude/asset_pack/Materials/Textures/"
+TEX = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets/common/materials/Textures") + os.sep
 # material name -> (texture set, uv scale)
 LIB = {
     "M_Concrete_Rough": ("concrete_rough", 1.0),

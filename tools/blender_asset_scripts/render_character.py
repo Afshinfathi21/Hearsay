@@ -8,7 +8,7 @@ import bpy
 import bmesh
 from mathutils import Vector, Matrix
 
-ROOT = "/home/claude/asset_pack"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 argv = sys.argv[sys.argv.index("--") + 1:]
 shot = argv[0]
 width = int(argv[1]) if len(argv) > 1 else 960

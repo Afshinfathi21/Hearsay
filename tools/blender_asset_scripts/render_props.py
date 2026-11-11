@@ -6,7 +6,7 @@ import math
 import bpy
 from mathutils import Vector
 
-ROOT = "/home/claude/asset_pack"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 from common import *          # noqa
 import blender_pbr as pb
