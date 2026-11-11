@@ -1,0 +1,13 @@
+[gd_resource type="ORMMaterial3D" format=3]
+
+[ext_resource type="Texture2D" path="res://assets/common/materials/Textures/paint_worn_albedo.png" id="1_n7ov7"]
+[ext_resource type="Texture2D" path="res://assets/common/materials/Textures/paint_worn_normal.png" id="2_ebqxb"]
+[ext_resource type="Texture2D" path="res://assets/common/materials/Textures/paint_worn_orm.png" id="3_qxt1b"]
+
+[resource]
+resource_name = "M_Paint_Worn"
+albedo_texture = ExtResource("1_n7ov7")
+orm_texture = ExtResource("3_qxt1b")
+normal_enabled = true
+normal_texture = ExtResource("2_ebqxb")
+ao_enabled = true

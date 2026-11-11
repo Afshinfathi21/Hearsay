@@ -1,0 +1,13 @@
+[gd_resource type="ORMMaterial3D" format=3]
+
+[ext_resource type="Texture2D" path="res://assets/common/materials/Textures/steel_brushed_albedo.png" id="1_5m13m"]
+[ext_resource type="Texture2D" path="res://assets/common/materials/Textures/steel_brushed_normal.png" id="2_erkmg"]
+[ext_resource type="Texture2D" path="res://assets/common/materials/Textures/steel_brushed_orm.png" id="3_v56yy"]
+
+[resource]
+resource_name = "M_Steel_Dark_Brushed"
+albedo_texture = ExtResource("1_5m13m")
+orm_texture = ExtResource("3_v56yy")
+normal_enabled = true
+normal_texture = ExtResource("2_erkmg")
+ao_enabled = true
