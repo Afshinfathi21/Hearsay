@@ -2,7 +2,7 @@
 
 Procedural blockout (primitives, flat-shaded, PBR materials, no textures). Metres, Y-up.
 Regenerate/modify: `pip install trimesh numpy && python build_assets.py` (writes ./out).
-Copy to `res://assets/auction/` in Godot.
+The Godot assets live in `res://assets/balance_scale/`. The assembled scenes are in `res://Levels/Balance Scale/`.
 
 | File | Origin | Notes |
 |---|---|---|
@@ -18,4 +18,4 @@ Copy to `res://assets/auction/` in Godot.
 | round_display.glb | centre of back face | 3.2x1.3 m; Screen quad 3.0x1.1 UV 0-1; e.g. N wall at (0, 2.6, -4.8) |
 | acid_liquid.gdshader / acid_pot.gd | - | glow shader and fill/pour/overflow/drain controller with particle FX |
 
-Pot scene layout for acid_pot.gd: AcidPot(Node3D) > Pot, Liquid, Stream, Release, Pipes, Valve (y=1.6).
+Pot scene layout: `AcidPot.tscn` instances the pot, liquid, stream, release mechanism, pipes, and valve. `AuctionChamber.tscn` places the four seats and overhead pots around the table.

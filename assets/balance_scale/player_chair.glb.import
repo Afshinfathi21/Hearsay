@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://c5grkr0m3cuv0"
-path="res://.godot/imported/auction_chamber.glb-e5e5dd2d3c41009daa20fb0a0f622283.scn"
+uid="uid://by415k1342ycs"
+path="res://.godot/imported/player_chair.glb-04744ea4258e999f499b4a2e41a6ea67.scn"
 
 [deps]
 
-source_file="res://Assets/balance scale/auction_chamber.glb"
-dest_files=["res://.godot/imported/auction_chamber.glb-e5e5dd2d3c41009daa20fb0a0f622283.scn"]
+source_file="res://assets/balance_scale/player_chair.glb"
+dest_files=["res://.godot/imported/player_chair.glb-04744ea4258e999f499b4a2e41a6ea67.scn"]
 
 [params]
 

@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://kpj5kxgy8pxs"
-path="res://.godot/imported/acid_pot.glb-ad16ca89beb3daa1dd7b693a6d286787.scn"
+uid="uid://c5grkr0m3cuv0"
+path="res://.godot/imported/auction_chamber.glb-e5e5dd2d3c41009daa20fb0a0f622283.scn"
 
 [deps]
 
-source_file="res://Assets/balance scale/acid_pot.glb"
-dest_files=["res://.godot/imported/acid_pot.glb-ad16ca89beb3daa1dd7b693a6d286787.scn"]
+source_file="res://assets/balance_scale/auction_chamber.glb"
+dest_files=["res://.godot/imported/auction_chamber.glb-e5e5dd2d3c41009daa20fb0a0f622283.scn"]
 
 [params]
 

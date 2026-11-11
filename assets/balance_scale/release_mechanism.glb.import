@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://c2s6g64g0mdrd"
-path="res://.godot/imported/acid_liquid.glb-47d62765fd95351b769650ae81f6525e.scn"
+uid="uid://cs6vl3jcvv8g6"
+path="res://.godot/imported/release_mechanism.glb-4775b94e656629c3080ee1c686807f5b.scn"
 
 [deps]
 
-source_file="res://Assets/balance scale/acid_liquid.glb"
-dest_files=["res://.godot/imported/acid_liquid.glb-47d62765fd95351b769650ae81f6525e.scn"]
+source_file="res://assets/balance_scale/release_mechanism.glb"
+dest_files=["res://.godot/imported/release_mechanism.glb-4775b94e656629c3080ee1c686807f5b.scn"]
 
 [params]
 

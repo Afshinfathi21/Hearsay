@@ -1,0 +1,25 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://assets/balance_scale/acid_pot.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://assets/balance_scale/acid_pot.glb" id="2_pot"]
+[ext_resource type="PackedScene" path="res://assets/balance_scale/acid_liquid.glb" id="3_liquid"]
+[ext_resource type="PackedScene" path="res://assets/balance_scale/acid_stream.glb" id="4_stream"]
+[ext_resource type="PackedScene" path="res://assets/balance_scale/release_mechanism.glb" id="5_release"]
+[ext_resource type="PackedScene" path="res://assets/balance_scale/pipes_feed.glb" id="6_pipes"]
+[ext_resource type="PackedScene" path="res://assets/balance_scale/valve.glb" id="7_valve"]
+
+[node name="AcidPot" type="Node3D"]
+script = ExtResource("1_script")
+
+[node name="Pot" parent="." instance=ExtResource("2_pot")]
+
+[node name="Liquid" parent="." instance=ExtResource("3_liquid")]
+
+[node name="Stream" parent="." instance=ExtResource("4_stream")]
+
+[node name="Release" parent="." instance=ExtResource("5_release")]
+
+[node name="Pipes" parent="." instance=ExtResource("6_pipes")]
+
+[node name="Valve" parent="." instance=ExtResource("7_valve")]
+position = Vector3(0, 1.6, 0)

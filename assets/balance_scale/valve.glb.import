@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://d17cjrcspr3tm"
-path="res://.godot/imported/pipes_feed.glb-a926ff9e1cb972bbd49418b7bdc121c1.scn"
+uid="uid://7kf3b585pq82"
+path="res://.godot/imported/valve.glb-b32a8788e3c324ce64687507be3c175a.scn"
 
 [deps]
 
-source_file="res://Assets/balance scale/pipes_feed.glb"
-dest_files=["res://.godot/imported/pipes_feed.glb-a926ff9e1cb972bbd49418b7bdc121c1.scn"]
+source_file="res://assets/balance_scale/valve.glb"
+dest_files=["res://.godot/imported/valve.glb-b32a8788e3c324ce64687507be3c175a.scn"]
 
 [params]
 

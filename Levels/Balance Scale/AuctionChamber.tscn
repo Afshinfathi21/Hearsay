@@ -1,0 +1,85 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/balance_scale/auction_chamber.glb" id="1_chamber"]
+[ext_resource type="PackedScene" path="res://assets/balance_scale/auction_table.glb" id="2_table"]
+[ext_resource type="PackedScene" path="res://assets/balance_scale/player_chair.glb" id="3_chair"]
+[ext_resource type="PackedScene" path="res://Levels/Balance Scale/AcidPot.tscn" id="4_pot"]
+[ext_resource type="PackedScene" path="res://assets/balance_scale/round_display.glb" id="5_display"]
+
+[node name="AuctionChamber" type="Node3D"]
+
+[node name="Chamber" parent="." instance=ExtResource("1_chamber")]
+
+[node name="AuctionTable" parent="." instance=ExtResource("2_table")]
+
+[node name="Seats" type="Node3D" parent="."]
+
+[node name="East" parent="Seats" instance=ExtResource("3_chair")]
+position = Vector3(1.9, 0, 0)
+
+[node name="West" parent="Seats" instance=ExtResource("3_chair")]
+position = Vector3(-1.9, 0, 0)
+rotation = Vector3(0, 3.1415927, 0)
+
+[node name="South" parent="Seats" instance=ExtResource("3_chair")]
+position = Vector3(0, 0, 1.9)
+rotation = Vector3(0, -1.5707963, 0)
+
+[node name="North" parent="Seats" instance=ExtResource("3_chair")]
+position = Vector3(0, 0, -1.9)
+rotation = Vector3(0, 1.5707963, 0)
+
+[node name="Pots" type="Node3D" parent="."]
+
+[node name="East" parent="Pots" instance=ExtResource("4_pot")]
+position = Vector3(1.9, 2.2, 0)
+
+[node name="West" parent="Pots" instance=ExtResource("4_pot")]
+position = Vector3(-1.9, 2.2, 0)
+rotation = Vector3(0, 3.1415927, 0)
+
+[node name="South" parent="Pots" instance=ExtResource("4_pot")]
+position = Vector3(0, 2.2, 1.9)
+rotation = Vector3(0, -1.5707963, 0)
+
+[node name="North" parent="Pots" instance=ExtResource("4_pot")]
+position = Vector3(0, 2.2, -1.9)
+rotation = Vector3(0, 1.5707963, 0)
+
+[node name="RoundDisplay" parent="." instance=ExtResource("5_display")]
+position = Vector3(0, 2.6, -4.8)
+rotation = Vector3(0, 3.1415927, 0)
+
+[node name="SpotLights" type="Node3D" parent="."]
+
+[node name="NorthWest" type="SpotLight3D" parent="SpotLights"]
+position = Vector3(-2.5, 4.1, -2.5)
+rotation = Vector3(-1.5707963, 0, 0)
+light_energy = 3.0
+spot_range = 8.0
+spot_angle = 40.0
+shadow_enabled = true
+
+[node name="NorthEast" type="SpotLight3D" parent="SpotLights"]
+position = Vector3(2.5, 4.1, -2.5)
+rotation = Vector3(-1.5707963, 0, 0)
+light_energy = 3.0
+spot_range = 8.0
+spot_angle = 40.0
+shadow_enabled = true
+
+[node name="SouthWest" type="SpotLight3D" parent="SpotLights"]
+position = Vector3(-2.5, 4.1, 2.5)
+rotation = Vector3(-1.5707963, 0, 0)
+light_energy = 3.0
+spot_range = 8.0
+spot_angle = 40.0
+shadow_enabled = true
+
+[node name="SouthEast" type="SpotLight3D" parent="SpotLights"]
+position = Vector3(2.5, 4.1, 2.5)
+rotation = Vector3(-1.5707963, 0, 0)
+light_energy = 3.0
+spot_range = 8.0
+spot_angle = 40.0
+shadow_enabled = true
