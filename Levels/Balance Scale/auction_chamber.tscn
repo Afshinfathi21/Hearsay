@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="PackedScene" path="res://assets/balance_scale/auction_chamber.glb" id="1_chamber"]
 [ext_resource type="PackedScene" path="res://assets/balance_scale/auction_table.glb" id="2_table"]
