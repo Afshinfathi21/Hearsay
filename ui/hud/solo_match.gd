@@ -58,7 +58,7 @@ func _ready() -> void:
 		rec.door.passage_rejected.connect(_on_door_passage_rejected)
 	generator.room_entered.connect(_on_room_entered)
 	generator.exit_reached.connect(_on_exit_reached)
-	hud.victory_continue.connect(func() -> void: get_tree().reload_current_scene())
+	hud.victory_continue.connect(func() -> void: get_tree().change_scene_to_file("res://Levels/Balance Scale/auction_chamber.tscn"))
 	hud.item_use_requested.connect(_on_item_use_requested)
 	_current_room = generator.rooms.get(generator.start_room)
 	_setup_minigames()
