@@ -1,11 +1,11 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="PackedScene" path="res://assets/balance_scale/auction_chamber.glb" id="1_chamber"]
 [ext_resource type="PackedScene" path="res://assets/balance_scale/auction_table.glb" id="2_table"]
 [ext_resource type="PackedScene" path="res://assets/balance_scale/player_chair.glb" id="3_chair"]
 [ext_resource type="PackedScene" path="res://Levels/Balance Scale/AcidPot.tscn" id="4_pot"]
 [ext_resource type="PackedScene" path="res://assets/balance_scale/round_display.glb" id="5_display"]
-[ext_resource type="PackedScene" uid="uid://bu1surqhya0ql" path="res://Player/player.tscn" id="6_player"]
+[ext_resource type="PackedScene" path="res://Player/player.tscn" id="6_player"]
 
 [sub_resource type="Environment" id="Environment_main"]
 background_mode = 1
