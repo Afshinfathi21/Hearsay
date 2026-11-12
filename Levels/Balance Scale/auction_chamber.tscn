@@ -1,0 +1,106 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/balance_scale/auction_chamber.glb" id="1_chamber"]
+[ext_resource type="PackedScene" path="res://assets/balance_scale/auction_table.glb" id="2_table"]
+[ext_resource type="PackedScene" path="res://assets/balance_scale/player_chair.glb" id="3_chair"]
+[ext_resource type="PackedScene" path="res://Levels/Balance Scale/AcidPot.tscn" id="4_pot"]
+[ext_resource type="PackedScene" path="res://assets/balance_scale/round_display.glb" id="5_display"]
+
+[sub_resource type="Environment" id="Environment_main"]
+background_mode = 1
+background_color = Color(0.018, 0.024, 0.035, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.48, 0.55, 0.66, 1)
+ambient_light_energy = 0.55
+tonemap_mode = 2
+glow_enabled = true
+glow_intensity = 0.35
+
+[node name="BalanceScale" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_main")
+
+[node name="Chamber" parent="." instance=ExtResource("1_chamber")]
+
+[node name="AuctionTable" parent="." instance=ExtResource("2_table")]
+
+[node name="RoundDisplay" parent="." instance=ExtResource("5_display")]
+position = Vector3(0, 2.6, -4.8)
+
+[node name="Seats" type="Node3D" parent="."]
+
+[node name="Seat_East" parent="Seats" instance=ExtResource("3_chair")]
+position = Vector3(1.9, 0, 0)
+
+[node name="Seat_South" parent="Seats" instance=ExtResource("3_chair")]
+position = Vector3(0, 0, 1.9)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="Seat_West" parent="Seats" instance=ExtResource("3_chair")]
+position = Vector3(-1.9, 0, 0)
+rotation_degrees = Vector3(0, 180, 0)
+
+[node name="Seat_North" parent="Seats" instance=ExtResource("3_chair")]
+position = Vector3(0, 0, -1.9)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="AcidPots" type="Node3D" parent="."]
+
+[node name="Pot_East" parent="AcidPots" instance=ExtResource("4_pot")]
+position = Vector3(1.9, 2.2, 0)
+
+[node name="Pot_South" parent="AcidPots" instance=ExtResource("4_pot")]
+position = Vector3(0, 2.2, 1.9)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="Pot_West" parent="AcidPots" instance=ExtResource("4_pot")]
+position = Vector3(-1.9, 2.2, 0)
+rotation_degrees = Vector3(0, 180, 0)
+
+[node name="Pot_North" parent="AcidPots" instance=ExtResource("4_pot")]
+position = Vector3(0, 2.2, -1.9)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="Lighting" type="Node3D" parent="."]
+
+[node name="KeyLight" type="DirectionalLight3D" parent="Lighting"]
+rotation_degrees = Vector3(-48, -32, 0)
+light_color = Color(0.72, 0.82, 1, 1)
+light_energy = 0.65
+shadow_enabled = true
+
+[node name="TableLight" type="OmniLight3D" parent="Lighting"]
+position = Vector3(0, 3.5, 0)
+light_color = Color(0.78, 1, 0.28, 1)
+light_energy = 2.2
+omni_range = 7.0
+shadow_enabled = true
+
+[node name="WallFill" type="OmniLight3D" parent="Lighting"]
+position = Vector3(0, 3.2, -4.0)
+light_color = Color(0.2, 0.65, 1, 1)
+light_energy = 1.5
+omni_range = 6.0
+
+[node name="Camera3D" type="Camera3D" parent="."]
+position = Vector3(8.5, 6.5, 10.5)
+rotation_degrees = Vector3(-24, 39, 0)
+current = true
+
+[node name="PlayerSpawns" type="Node3D" parent="."]
+
+[node name="Spawn_East" type="Marker3D" parent="PlayerSpawns"]
+position = Vector3(3.0, 0.1, 0)
+
+[node name="Spawn_South" type="Marker3D" parent="PlayerSpawns"]
+position = Vector3(0, 0.1, 3.0)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="Spawn_West" type="Marker3D" parent="PlayerSpawns"]
+position = Vector3(-3.0, 0.1, 0)
+rotation_degrees = Vector3(0, 180, 0)
+
+[node name="Spawn_North" type="Marker3D" parent="PlayerSpawns"]
+position = Vector3(0, 0.1, -3.0)
+rotation_degrees = Vector3(0, -90, 0)
