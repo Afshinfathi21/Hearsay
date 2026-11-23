@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://c5grkr0m3cuv0"
-path="res://.godot/imported/auction_chamber.glb-e5e5dd2d3c41009daa20fb0a0f622283.scn"
+path="res://.godot/imported/auction_chamber.glb-a5f034bb85313e279321c4cbf0ea5d9b.scn"
 
 [deps]
 
 source_file="res://assets/balance_scale/auction_chamber.glb"
-dest_files=["res://.godot/imported/auction_chamber.glb-e5e5dd2d3c41009daa20fb0a0f622283.scn"]
+dest_files=["res://.godot/imported/auction_chamber.glb-a5f034bb85313e279321c4cbf0ea5d9b.scn"]
 
 [params]
 

@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://cs6vl3jcvv8g6"
-path="res://.godot/imported/release_mechanism.glb-4775b94e656629c3080ee1c686807f5b.scn"
+path="res://.godot/imported/release_mechanism.glb-32917e78aefd221135f181b282dfa6bb.scn"
 
 [deps]
 
 source_file="res://assets/balance_scale/release_mechanism.glb"
-dest_files=["res://.godot/imported/release_mechanism.glb-4775b94e656629c3080ee1c686807f5b.scn"]
+dest_files=["res://.godot/imported/release_mechanism.glb-32917e78aefd221135f181b282dfa6bb.scn"]
 
 [params]
 

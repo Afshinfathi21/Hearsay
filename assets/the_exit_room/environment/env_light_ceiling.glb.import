@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://box7nqu4ivpkc"
-path="res://.godot/imported/env_light_ceiling.glb-aafebc8a130667d8d07d08a9dbf42e5b.scn"
+path="res://.godot/imported/env_light_ceiling.glb-69d657eab729063f3e8d79fc71d1e711.scn"
 
 [deps]
 
 source_file="res://assets/the_exit_room/environment/env_light_ceiling.glb"
-dest_files=["res://.godot/imported/env_light_ceiling.glb-aafebc8a130667d8d07d08a9dbf42e5b.scn"]
+dest_files=["res://.godot/imported/env_light_ceiling.glb-69d657eab729063f3e8d79fc71d1e711.scn"]
 
 [params]
 

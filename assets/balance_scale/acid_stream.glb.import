@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://cotdygce21nuk"
-path="res://.godot/imported/acid_stream.glb-cf728053da84e14c3a75d761b264ca55.scn"
+path="res://.godot/imported/acid_stream.glb-8f802b90e0014effbdffb713efef5822.scn"
 
 [deps]
 
 source_file="res://assets/balance_scale/acid_stream.glb"
-dest_files=["res://.godot/imported/acid_stream.glb-cf728053da84e14c3a75d761b264ca55.scn"]
+dest_files=["res://.godot/imported/acid_stream.glb-8f802b90e0014effbdffb713efef5822.scn"]
 
 [params]
 

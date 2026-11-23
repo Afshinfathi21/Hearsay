@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://bes6ntmusa2wt"
-path="res://.godot/imported/prop_speaker_wall.glb-d69304d6ec9a12789e5d9be53df150a4.scn"
+path="res://.godot/imported/prop_speaker_wall.glb-3474902c6b452a99adf29a6a7f04d94d.scn"
 
 [deps]
 
 source_file="res://assets/the_exit_room/props/prop_speaker_wall.glb"
-dest_files=["res://.godot/imported/prop_speaker_wall.glb-d69304d6ec9a12789e5d9be53df150a4.scn"]
+dest_files=["res://.godot/imported/prop_speaker_wall.glb-3474902c6b452a99adf29a6a7f04d94d.scn"]
 
 [params]
 

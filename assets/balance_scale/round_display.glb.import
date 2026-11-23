@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://c7lihwn2p2wp6"
-path="res://.godot/imported/round_display.glb-d25cf496c87a4633fb5aaac3f7559119.scn"
+path="res://.godot/imported/round_display.glb-1c01eed712b35bff38c10582d5b9eef4.scn"
 
 [deps]
 
 source_file="res://assets/balance_scale/round_display.glb"
-dest_files=["res://.godot/imported/round_display.glb-d25cf496c87a4633fb5aaac3f7559119.scn"]
+dest_files=["res://.godot/imported/round_display.glb-1c01eed712b35bff38c10582d5b9eef4.scn"]
 
 [params]
 

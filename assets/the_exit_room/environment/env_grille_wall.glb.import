@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://bc0aneipx8vtt"
-path="res://.godot/imported/env_grille_wall.glb-5ca8c00268a8953cff020736481937fd.scn"
+path="res://.godot/imported/env_grille_wall.glb-1634e7524171b44634b6a230e6e509b7.scn"
 
 [deps]
 
 source_file="res://assets/the_exit_room/environment/env_grille_wall.glb"
-dest_files=["res://.godot/imported/env_grille_wall.glb-5ca8c00268a8953cff020736481937fd.scn"]
+dest_files=["res://.godot/imported/env_grille_wall.glb-1634e7524171b44634b6a230e6e509b7.scn"]
 
 [params]
 

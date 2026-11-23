@@ -39,7 +39,6 @@ player = NodePath("../Player")
 point_budget = 20
 min_route_margin = 3
 minigame_fraction = 0.2
-optional_door_max_capacity = 4
 
 [node name="GridMap" type="GridMap" parent="Node3D" unique_id=1673236768]
 cell_center_y = false
@@ -68,3 +67,4 @@ script = ExtResource("5_ed4ln")
 hud = NodePath("../UI/GameHUD")
 generator = NodePath("..")
 player = NodePath("../Player")
+starting_points = 30

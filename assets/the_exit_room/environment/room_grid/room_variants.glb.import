@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://btxpu8bd5oyss"
-path="res://.godot/imported/room_variants.glb-bea7027683382fcccba0f4a0c28249d8.scn"
+path="res://.godot/imported/room_variants.glb-27d4b9e2398f24f66923d530d79fe533.scn"
 
 [deps]
 
 source_file="res://assets/the_exit_room/environment/room_grid/room_variants.glb"
-dest_files=["res://.godot/imported/room_variants.glb-bea7027683382fcccba0f4a0c28249d8.scn"]
+dest_files=["res://.godot/imported/room_variants.glb-27d4b9e2398f24f66923d530d79fe533.scn"]
 
 [params]
 

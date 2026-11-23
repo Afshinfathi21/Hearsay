@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://buqwbamysou70"
-path="res://.godot/imported/prop_number_plate.glb-64fb40f39926ae071d55f62857e37529.scn"
+path="res://.godot/imported/prop_number_plate.glb-0ca6a4e1f81447b7113fadcff456f78f.scn"
 
 [deps]
 
 source_file="res://assets/the_exit_room/props/prop_number_plate.glb"
-dest_files=["res://.godot/imported/prop_number_plate.glb-64fb40f39926ae071d55f62857e37529.scn"]
+dest_files=["res://.godot/imported/prop_number_plate.glb-0ca6a4e1f81447b7113fadcff456f78f.scn"]
 
 [params]
 

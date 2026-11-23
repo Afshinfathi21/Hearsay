@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://cq63na2yqwj1g"
-path="res://.godot/imported/prop_camera_wall.glb-a1472d17cc21c7f93974eebb01d32f12.scn"
+path="res://.godot/imported/prop_camera_wall.glb-8f74ac2e67490bafbd665fbdaf18b7ac.scn"
 
 [deps]
 
 source_file="res://assets/the_exit_room/props/prop_camera_wall.glb"
-dest_files=["res://.godot/imported/prop_camera_wall.glb-a1472d17cc21c7f93974eebb01d32f12.scn"]
+dest_files=["res://.godot/imported/prop_camera_wall.glb-8f74ac2e67490bafbd665fbdaf18b7ac.scn"]
 
 [params]
 

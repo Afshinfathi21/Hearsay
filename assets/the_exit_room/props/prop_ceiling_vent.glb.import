@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://bql7xt1hu7yyl"
-path="res://.godot/imported/prop_ceiling_vent.glb-b499f29588430a81353963066b375fb6.scn"
+path="res://.godot/imported/prop_ceiling_vent.glb-d1d8e58022a8cf23dc3a20ddcf5fd0d3.scn"
 
 [deps]
 
 source_file="res://assets/the_exit_room/props/prop_ceiling_vent.glb"
-dest_files=["res://.godot/imported/prop_ceiling_vent.glb-b499f29588430a81353963066b375fb6.scn"]
+dest_files=["res://.godot/imported/prop_ceiling_vent.glb-d1d8e58022a8cf23dc3a20ddcf5fd0d3.scn"]
 
 [params]
 

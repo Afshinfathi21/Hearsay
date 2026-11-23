@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://n553e2dfxo6"
-path="res://.godot/imported/prop_electrical_panel.glb-2918a709ebd449a9c15af333c35a383f.scn"
+path="res://.godot/imported/prop_electrical_panel.glb-7b6b49c78a731544bc4ad534e2d23bb2.scn"
 
 [deps]
 
 source_file="res://assets/the_exit_room/props/prop_electrical_panel.glb"
-dest_files=["res://.godot/imported/prop_electrical_panel.glb-2918a709ebd449a9c15af333c35a383f.scn"]
+dest_files=["res://.godot/imported/prop_electrical_panel.glb-7b6b49c78a731544bc4ad534e2d23bb2.scn"]
 
 [params]
 

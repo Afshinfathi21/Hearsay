@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dyv0jv7mt07dy"
-path.s3tc="res://.godot/imported/rubber_albedo.png-6fae051e6cfa6cf2551e888cf0e9125b.s3tc.ctex"
+path.s3tc="res://.godot/imported/rubber_albedo.png-e41f0943b43c9a3d03671da9b9175379.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -12,7 +12,7 @@ metadata={
 [deps]
 
 source_file="res://assets/common/materials/Textures/rubber_albedo.png"
-dest_files=["res://.godot/imported/rubber_albedo.png-6fae051e6cfa6cf2551e888cf0e9125b.s3tc.ctex"]
+dest_files=["res://.godot/imported/rubber_albedo.png-e41f0943b43c9a3d03671da9b9175379.s3tc.ctex"]
 
 [params]
 

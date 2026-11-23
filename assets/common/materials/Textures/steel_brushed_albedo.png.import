@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://chiy7yo8u6b8x"
-path.s3tc="res://.godot/imported/steel_brushed_albedo.png-4242059811f1adba27cadc612f6ee210.s3tc.ctex"
+path.s3tc="res://.godot/imported/steel_brushed_albedo.png-42bc2ea4f855adabc1a7baf5ea26e96f.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -12,7 +12,7 @@ metadata={
 [deps]
 
 source_file="res://assets/common/materials/Textures/steel_brushed_albedo.png"
-dest_files=["res://.godot/imported/steel_brushed_albedo.png-4242059811f1adba27cadc612f6ee210.s3tc.ctex"]
+dest_files=["res://.godot/imported/steel_brushed_albedo.png-42bc2ea4f855adabc1a7baf5ea26e96f.s3tc.ctex"]
 
 [params]
 

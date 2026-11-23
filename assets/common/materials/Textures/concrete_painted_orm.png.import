@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dtg6ftj47uk4e"
-path.s3tc="res://.godot/imported/concrete_painted_orm.png-f83ba0c3cbcfb86502424d195150c173.s3tc.ctex"
+path.s3tc="res://.godot/imported/concrete_painted_orm.png-58e60dbe9df6cb4fcb40653b23494e88.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -12,7 +12,7 @@ metadata={
 [deps]
 
 source_file="res://assets/common/materials/Textures/concrete_painted_orm.png"
-dest_files=["res://.godot/imported/concrete_painted_orm.png-f83ba0c3cbcfb86502424d195150c173.s3tc.ctex"]
+dest_files=["res://.godot/imported/concrete_painted_orm.png-58e60dbe9df6cb4fcb40653b23494e88.s3tc.ctex"]
 
 [params]
 

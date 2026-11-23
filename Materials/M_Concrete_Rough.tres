@@ -1,0 +1,13 @@
+[gd_resource type="ORMMaterial3D" format=3]
+
+[ext_resource type="Texture2D" path="res://assets/common/materials/Textures/concrete_rough_albedo.png" id="1_uywpp"]
+[ext_resource type="Texture2D" path="res://assets/common/materials/Textures/concrete_rough_normal.png" id="2_h6230"]
+[ext_resource type="Texture2D" path="res://assets/common/materials/Textures/concrete_rough_orm.png" id="3_ab4q4"]
+
+[resource]
+resource_name = "M_Concrete_Rough"
+albedo_texture = ExtResource("1_uywpp")
+orm_texture = ExtResource("3_ab4q4")
+normal_enabled = true
+normal_texture = ExtResource("2_h6230")
+ao_enabled = true

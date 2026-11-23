@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://i0drm2cl3bry"
-path="res://.godot/imported/door_monitor.glb-15d1b7f8087d41782c0a67d4d2a82cf6.scn"
+path="res://.godot/imported/door_monitor.glb-d70b1ad87abdf60495f1d85df288b9f9.scn"
 
 [deps]
 
 source_file="res://assets/the_exit_room/monitors/door_monitor.glb"
-dest_files=["res://.godot/imported/door_monitor.glb-15d1b7f8087d41782c0a67d4d2a82cf6.scn"]
+dest_files=["res://.godot/imported/door_monitor.glb-d70b1ad87abdf60495f1d85df288b9f9.scn"]
 
 [params]
 

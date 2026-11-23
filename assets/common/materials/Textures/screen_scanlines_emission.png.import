@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cahok6ebma47k"
-path.s3tc="res://.godot/imported/screen_scanlines_emission.png-c9067a3c5c9058d51c3697b244f7bd29.s3tc.ctex"
+path.s3tc="res://.godot/imported/screen_scanlines_emission.png-11c64e572c96f06e8b335669c821f0ad.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -12,7 +12,7 @@ metadata={
 [deps]
 
 source_file="res://assets/common/materials/Textures/screen_scanlines_emission.png"
-dest_files=["res://.godot/imported/screen_scanlines_emission.png-c9067a3c5c9058d51c3697b244f7bd29.s3tc.ctex"]
+dest_files=["res://.godot/imported/screen_scanlines_emission.png-11c64e572c96f06e8b335669c821f0ad.s3tc.ctex"]
 
 [params]
 

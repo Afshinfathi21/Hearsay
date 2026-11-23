@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://by7s88258w42r"
-path="res://.godot/imported/prop_emergency_light.glb-0b32c6f075b22851187fda833952bdb3.scn"
+path="res://.godot/imported/prop_emergency_light.glb-dd373aedd841357ff39af2987925e046.scn"
 
 [deps]
 
 source_file="res://assets/the_exit_room/props/prop_emergency_light.glb"
-dest_files=["res://.godot/imported/prop_emergency_light.glb-0b32c6f075b22851187fda833952bdb3.scn"]
+dest_files=["res://.godot/imported/prop_emergency_light.glb-dd373aedd841357ff39af2987925e046.scn"]
 
 [params]
 

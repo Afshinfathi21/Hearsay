@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://ccs7e8w1u4s6j"
-path="res://.godot/imported/preview_char_posetest.png-5716624db4bfc7e7d29d33eabc00ad29.ctex"
+path="res://.godot/imported/preview_char_posetest.png-b2063fba69f8c0a9baa1fe20d2022e23.ctex"
 metadata={
 "vram_texture": false
 }
@@ -11,7 +11,7 @@ metadata={
 [deps]
 
 source_file="res://assets/previews/preview_char_posetest.png"
-dest_files=["res://.godot/imported/preview_char_posetest.png-5716624db4bfc7e7d29d33eabc00ad29.ctex"]
+dest_files=["res://.godot/imported/preview_char_posetest.png-b2063fba69f8c0a9baa1fe20d2022e23.ctex"]
 
 [params]
 

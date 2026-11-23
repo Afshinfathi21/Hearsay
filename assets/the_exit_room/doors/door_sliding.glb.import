@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://ccu81ckykhe3g"
-path="res://.godot/imported/door_sliding.glb-9bd30a8cf09cc38b084c394263019143.scn"
+path="res://.godot/imported/door_sliding.glb-567fbfa4b30b9c2346de47909c66619c.scn"
 
 [deps]
 
 source_file="res://assets/the_exit_room/doors/door_sliding.glb"
-dest_files=["res://.godot/imported/door_sliding.glb-9bd30a8cf09cc38b084c394263019143.scn"]
+dest_files=["res://.godot/imported/door_sliding.glb-567fbfa4b30b9c2346de47909c66619c.scn"]
 
 [params]
 

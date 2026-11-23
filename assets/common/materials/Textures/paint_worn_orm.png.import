@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bmywatwccinbc"
-path.s3tc="res://.godot/imported/paint_worn_orm.png-c26e67c86fe2f4d044b3a2a629b29a70.s3tc.ctex"
+path.s3tc="res://.godot/imported/paint_worn_orm.png-3d482f1a68f1b89d35ee3185f62cb100.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -12,7 +12,7 @@ metadata={
 [deps]
 
 source_file="res://assets/common/materials/Textures/paint_worn_orm.png"
-dest_files=["res://.godot/imported/paint_worn_orm.png-c26e67c86fe2f4d044b3a2a629b29a70.s3tc.ctex"]
+dest_files=["res://.godot/imported/paint_worn_orm.png-3d482f1a68f1b89d35ee3185f62cb100.s3tc.ctex"]
 
 [params]
 

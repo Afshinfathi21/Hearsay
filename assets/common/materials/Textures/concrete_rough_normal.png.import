@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b27rqgka07huo"
-path.s3tc="res://.godot/imported/concrete_rough_normal.png-8f3ec27e18e2ff520dd249aa8d094cc9.s3tc.ctex"
+path.s3tc="res://.godot/imported/concrete_rough_normal.png-a223517de7e52d9b1e1b6b15ba25b3eb.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -12,7 +12,7 @@ metadata={
 [deps]
 
 source_file="res://assets/common/materials/Textures/concrete_rough_normal.png"
-dest_files=["res://.godot/imported/concrete_rough_normal.png-8f3ec27e18e2ff520dd249aa8d094cc9.s3tc.ctex"]
+dest_files=["res://.godot/imported/concrete_rough_normal.png-a223517de7e52d9b1e1b6b15ba25b3eb.s3tc.ctex"]
 
 [params]
 

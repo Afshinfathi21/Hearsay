@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://c2s6g64g0mdrd"
-path="res://.godot/imported/acid_liquid.glb-47d62765fd95351b769650ae81f6525e.scn"
+path="res://.godot/imported/acid_liquid.glb-b76f5614fc5aed62c3ea1a0729f65af4.scn"
 
 [deps]
 
 source_file="res://assets/balance_scale/acid_liquid.glb"
-dest_files=["res://.godot/imported/acid_liquid.glb-47d62765fd95351b769650ae81f6525e.scn"]
+dest_files=["res://.godot/imported/acid_liquid.glb-b76f5614fc5aed62c3ea1a0729f65af4.scn"]
 
 [params]
 

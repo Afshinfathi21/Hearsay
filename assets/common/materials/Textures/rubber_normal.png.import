@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://s2yp3n7mqnyf"
-path.s3tc="res://.godot/imported/rubber_normal.png-4a9f952e9b8ffb43d9cf40f024e59e1e.s3tc.ctex"
+path.s3tc="res://.godot/imported/rubber_normal.png-7575a31668ee4a596d27d210bd3e8c0a.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -12,7 +12,7 @@ metadata={
 [deps]
 
 source_file="res://assets/common/materials/Textures/rubber_normal.png"
-dest_files=["res://.godot/imported/rubber_normal.png-4a9f952e9b8ffb43d9cf40f024e59e1e.s3tc.ctex"]
+dest_files=["res://.godot/imported/rubber_normal.png-7575a31668ee4a596d27d210bd3e8c0a.s3tc.ctex"]
 
 [params]
 

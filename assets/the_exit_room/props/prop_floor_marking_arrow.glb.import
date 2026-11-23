@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://d3cpje6ntk6vs"
-path="res://.godot/imported/prop_floor_marking_arrow.glb-f539c4909b5ea7d0244d28165dbcc435.scn"
+path="res://.godot/imported/prop_floor_marking_arrow.glb-af14332457eef585294da32a7d6f3d86.scn"
 
 [deps]
 
 source_file="res://assets/the_exit_room/props/prop_floor_marking_arrow.glb"
-dest_files=["res://.godot/imported/prop_floor_marking_arrow.glb-f539c4909b5ea7d0244d28165dbcc435.scn"]
+dest_files=["res://.godot/imported/prop_floor_marking_arrow.glb-af14332457eef585294da32a7d6f3d86.scn"]
 
 [params]
 

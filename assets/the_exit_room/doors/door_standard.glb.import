@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://ylhesnhis7ab"
-path="res://.godot/imported/door_standard.glb-80a3d60165cc67850554b0cdcb811c9a.scn"
+path="res://.godot/imported/door_standard.glb-9a6bf5a825cc68565c52ec9a1bae0862.scn"
 
 [deps]
 
 source_file="res://assets/the_exit_room/doors/door_standard.glb"
-dest_files=["res://.godot/imported/door_standard.glb-80a3d60165cc67850554b0cdcb811c9a.scn"]
+dest_files=["res://.godot/imported/door_standard.glb-9a6bf5a825cc68565c52ec9a1bae0862.scn"]
 
 [params]
 

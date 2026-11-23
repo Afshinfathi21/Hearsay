@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://bxq8xu4xo32v3"
-path="res://.godot/imported/env_wall_doorway.glb-5c7f6c0c6867873c3a05c6833fdecf09.scn"
+path="res://.godot/imported/env_wall_doorway.glb-ae1457d535dbb81920098a70457929be.scn"
 
 [deps]
 
 source_file="res://assets/the_exit_room/environment/env_wall_doorway.glb"
-dest_files=["res://.godot/imported/env_wall_doorway.glb-5c7f6c0c6867873c3a05c6833fdecf09.scn"]
+dest_files=["res://.godot/imported/env_wall_doorway.glb-ae1457d535dbb81920098a70457929be.scn"]
 
 [params]
 
