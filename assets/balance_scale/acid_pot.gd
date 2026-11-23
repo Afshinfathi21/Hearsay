@@ -40,8 +40,8 @@ func _ready() -> void:
 	_fx_drain = _make_fx(Vector3(0, -0.06, 0), 120, 1.0, Vector3.DOWN, 20.0, 1.0, 2.5, 6.0, 0.03)
 	(_fx_bubbles.process_material as ParticleProcessMaterial).emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
 	(_fx_bubbles.process_material as ParticleProcessMaterial).emission_sphere_radius = 0.25
-	_fx_overflow.process_material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
-	_fx_overflow.process_material.emission_sphere_radius = 0.3
+	(_fx_overflow.process_material as ParticleProcessMaterial).emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	(_fx_overflow.process_material as ParticleProcessMaterial).emission_sphere_radius = 0.3
 	_fx_drain.one_shot = true
 	_fx_drain.explosiveness = 0.8
 	stream.visible = false
