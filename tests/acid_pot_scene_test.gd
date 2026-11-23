@@ -2,7 +2,7 @@ extends SceneTree
 ## Scene-level smoke tests for the acid pot.
 ## Run with: godot --headless --path . --script res://tests/acid_pot_scene_test.gd
 
-const SCENE_PATH := "res://Levels/Balance Scale/AuctionChamber.tscn"
+const SCENE_PATH := "res://Levels/Balance Scale/auction_chamber.tscn"
 
 var passed := 0
 var failed := 0
@@ -23,7 +23,7 @@ func _run() -> void:
 	root.add_child(chamber)
 	await process_frame
 
-	var pot := chamber.get_node("Pots/East") as AcidPot
+	var pot := chamber.get_node_or_null("AcidPots/Pot_East") as AcidPot
 	_check(pot != null, "the east pot is assembled")
 	if pot == null:
 		_finish()
