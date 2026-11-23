@@ -84,7 +84,7 @@ func resolve_round(bids: Dictionary, round_penalty: int) -> Dictionary:
 			"winning_bid": highest_bid,
 			"round_penalty": round_penalty,
 			"eliminated": [],
-			"players": _player_snapshots()
+			"players": _public_player_snapshots()
 		}
 		round_resolved.emit(tie_result)
 		return tie_result
@@ -123,7 +123,7 @@ func resolve_round(bids: Dictionary, round_penalty: int) -> Dictionary:
 		"winning_bid": highest_bid,
 		"round_penalty": round_penalty,
 		"eliminated": eliminated_this_round,
-		"players": _player_snapshots()
+		"players": _public_player_snapshots()
 	}
 
 	if remaining.size() <= 1:
@@ -154,19 +154,31 @@ func snapshot() -> Dictionary:
 		"state": state,
 		"round_number": round_number,
 		"winner_id": winner_id,
-		"players": _player_snapshots()
+		"players": _public_player_snapshots()
 	}
 
 
-func _player_snapshots() -> Dictionary:
+## Public state deliberately excludes points. Use private_snapshot() for one player's own data.
+func _public_player_snapshots() -> Dictionary:
 	var result: Dictionary = {}
 	for player_id in points:
 		result[player_id] = {
-			"points": int(points[player_id]),
 			"acid": int(acid[player_id]),
 			"eliminated": bool(eliminated[player_id])
 		}
 	return result
+
+
+## Return only the requesting player's private state. Unknown IDs receive an empty dictionary.
+func private_snapshot(player_id: int) -> Dictionary:
+	if not points.has(player_id):
+		return {}
+	return {
+		"player_id": player_id,
+		"points": int(points[player_id]),
+		"acid": int(acid[player_id]),
+		"eliminated": bool(eliminated[player_id])
+	}
 
 
 func _error(message: String) -> Dictionary:
