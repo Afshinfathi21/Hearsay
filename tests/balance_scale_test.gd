@@ -14,6 +14,7 @@ func _init() -> void:
 	_test_negative_points_eliminate()
 	_test_full_pot_eliminates()
 	_test_last_player_wins()
+	_test_public_snapshots_hide_points()
 	print("\n%d passed, %d failed" % [passed, failed])
 	quit(1 if failed > 0 else 0)
 
@@ -83,6 +84,19 @@ func _test_last_player_wins() -> void:
 	var result := game.resolve_round({1: 5, 2: 0}, 11)
 	_check(result["game_over"] and result["game_winner_id"] == 1, "the last surviving player wins")
 	_check(game.state == BalanceScaleGame.State.ENDED and game.winner_id == 1, "the game enters the ended state")
+
+
+
+func _test_public_snapshots_hide_points() -> void:
+	_title("private player points")
+	var game := _new_game([1, 2], 25, 100)
+	var public_state := game.snapshot()
+	_check(not public_state["players"][1].has("points"), "public snapshot hides player points")
+	var result := game.resolve_round({1: 10, 2: 5}, 0)
+	_check(not result["players"][1].has("points"), "round result hides player points")
+	_check(game.private_snapshot(1)["points"] == 25, "a player can retrieve their own points")
+	_check(game.private_snapshot(2)["points"] == 25, "private snapshots are scoped to one player")
+	_check(game.private_snapshot(99).is_empty(), "unknown players receive no private state")
 
 
 func _new_game(ids: Array[int], points: int, capacity: int) -> BalanceScaleGame:
