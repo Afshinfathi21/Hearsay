@@ -81,7 +81,6 @@ func resolve_round(bids: Dictionary, round_penalty: int) -> Dictionary:
 			"ok": true,
 			"tie": true,
 			"winner_id": -1,
-			"winning_bid": highest_bid,
 			"round_penalty": round_penalty,
 			"eliminated": [],
 			"players": _public_player_snapshots()
@@ -120,7 +119,6 @@ func resolve_round(bids: Dictionary, round_penalty: int) -> Dictionary:
 		"ok": true,
 		"tie": false,
 		"winner_id": winner,
-		"winning_bid": highest_bid,
 		"round_penalty": round_penalty,
 		"eliminated": eliminated_this_round,
 		"players": _public_player_snapshots()
