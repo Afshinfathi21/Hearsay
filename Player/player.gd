@@ -211,7 +211,7 @@ func _physics_process(delta: float) -> void:
 	if model:
 		var target_yaw : float
 		if face_camera_direction or _first_person:
-			target_yaw = _yaw + PI + deg_to_rad(model_yaw_offset_deg)
+			target_yaw = _yaw + deg_to_rad(model_yaw_offset_deg)
 		elif direction != Vector3.ZERO:
 			target_yaw = atan2(direction.x, direction.z) + deg_to_rad(model_yaw_offset_deg)
 		else:
