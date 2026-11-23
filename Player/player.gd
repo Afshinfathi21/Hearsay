@@ -190,7 +190,7 @@ func _physics_process(delta: float) -> void:
 
 	# Movement relative to where the camera is looking.
 	var input_dir := Vector2.ZERO if input_blocked else Input.get_vector("move_left", "move_right", "move_up", "move_down")
-	var direction := (Basis(Vector3.UP, _yaw) * Vector3(input_dir.x, 0.0, input_dir.y)).normalized()
+	var direction := (Basis(Vector3.UP, head.global_rotation.y) * Vector3(input_dir.x, 0.0, input_dir.y)).normalized()
 
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
 	var rate : float
