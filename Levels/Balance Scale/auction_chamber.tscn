@@ -12,7 +12,7 @@ background_mode = 1
 background_color = Color(0.018, 0.024, 0.035, 1)
 ambient_light_source = 3
 ambient_light_color = Color(0.48, 0.55, 0.66, 1)
-ambient_light_energy = 0.9
+ambient_light_energy = 0.8
 tonemap_mode = 2
 glow_enabled = true
 glow_intensity = 0.35
@@ -62,20 +62,20 @@ transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 0, 2
 [node name="KeyLight" type="DirectionalLight3D" parent="Lighting" unique_id=409589981]
 transform = Transform3D(0.8480481, 0.3938068, -0.35458517, 0, 0.66913056, 0.74314487, 0.52991927, -0.63022256, 0.5674549, 0, 0, 0)
 light_color = Color(0.72, 0.82, 1, 1)
-light_energy = 1.2
+light_energy = 1.0
 shadow_enabled = true
 
 [node name="TableLight" type="OmniLight3D" parent="Lighting" unique_id=727854481]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.5, 0)
-light_color = Color(0.78, 1, 0.28, 1)
-light_energy = 3.0
+light_color = Color(0.65, 0.82, 0.42, 1)
+light_energy = 1.6
 shadow_enabled = true
-omni_range = 9.0
+omni_range = 8.0
 
 [node name="WallFill" type="OmniLight3D" parent="Lighting" unique_id=2067288202]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.2, -4)
-light_color = Color(0.2, 0.65, 1, 1)
-light_energy = 2.5
+light_color = Color(0.3, 0.62, 0.82, 1)
+light_energy = 1.6
 omni_range = 9.0
 
 [node name="PlayerSpawns" type="Node3D" parent="." unique_id=766220219]
@@ -101,7 +101,7 @@ position = Vector3(3, 0.8, 0)
 rotation_degrees = Vector3(0, 90, 0)
 camera_distance = 3.0
 start_first_person = true
-camera_pivot_height = 0.7
+camera_pivot_height = 1.55
 camera_shoulder_offset = 0.4
 pitch_min_deg = -30.0
 face_camera_direction = false
