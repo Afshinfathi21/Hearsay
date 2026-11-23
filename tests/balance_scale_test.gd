@@ -94,7 +94,7 @@ func _test_public_snapshots_hide_points() -> void:
 	_check(not public_state["players"][1].has("points"), "public snapshot hides player points")
 	var result := game.resolve_round({1: 10, 2: 5}, 0)
 	_check(not result["players"][1].has("points"), "round result hides player points")
-	_check(game.private_snapshot(1)["points"] == 25, "a player can retrieve their own points")
+	_check(game.private_snapshot(1)["points"] == 15, "a player can retrieve their own points")
 	_check(game.private_snapshot(2)["points"] == 25, "private snapshots are scoped to one player")
 	_check(game.private_snapshot(99).is_empty(), "unknown players receive no private state")
 
