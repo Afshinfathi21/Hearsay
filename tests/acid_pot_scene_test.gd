@@ -32,18 +32,18 @@ func _run() -> void:
 	pot.fill = 0.5
 	_check(is_equal_approx(pot.fill, 0.5) and is_equal_approx(pot.liquid.scale.y, 0.5), "manual fill updates the liquid mesh")
 
-	var overflow_seen := false
-	pot.overflowed.connect(func() -> void: overflow_seen = true)
+	var overflow_seen := [false]
+	pot.overflowed.connect(func() -> void: overflow_seen[0] = true)
 	pot.pour_to(1.1, 0.05)
 	await create_timer(0.15).timeout
 	_check(is_equal_approx(pot.fill, 1.1), "pour animation can reach the overflow range")
-	_check(overflow_seen and pot._fx_overflow.emitting, "overflow triggers the signal and overflow particles")
+	_check(overflow_seen[0] and pot._fx_overflow.emitting, "overflow triggers the signal and overflow particles")
 
-	var released_seen := false
-	pot.released.connect(func() -> void: released_seen = true)
+	var released_seen := [false]
+	pot.released.connect(func() -> void: released_seen[0] = true)
 	pot.release()
 	await create_timer(1.1).timeout
-	_check(released_seen, "release animation completes and emits its signal")
+	_check(released_seen[0], "release animation completes and emits its signal")
 	_check(is_equal_approx(pot.fill, 0.0), "release drains the pot")
 
 	pot.reset()
