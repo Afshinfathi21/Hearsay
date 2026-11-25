@@ -27,9 +27,16 @@ var _fx_overflow: GPUParticles3D
 var _fx_drain: GPUParticles3D
 var _tween: Tween
 var _pouring := false
+var _draining := false
+var _latch_rest_x := 0.0
+var _hatch_rest_z := 0.0
+var _valve_rest_y := 0.0
 
 
 func _ready() -> void:
+	_latch_rest_x = latch.position.x
+	_hatch_rest_z = hatch.rotation.z
+	_valve_rest_y = valve_wheel.rotation.y
 	_acid_mat = ShaderMaterial.new()
 	_acid_mat.shader = acid_shader
 	_override_material(liquid, _acid_mat)
@@ -63,7 +70,7 @@ func _apply() -> void:
 	liquid.visible = fill > 0.002
 	_fx_bubbles.emitting = fill > 0.05 and fill <= 1.0
 	_fx_bubbles.position.y = POT_BASE + 0.5 * LIQ_H * liquid.scale.y
-	_fx_overflow.emitting = fill > 1.0
+	_fx_overflow.emitting = fill > 1.0 and not _draining
 
 
 ## Animate the liquid to a target fill. Values above 1.0 spill over the rim.
@@ -72,6 +79,7 @@ func pour_to(target: float, duration: float = 1.5) -> void:
 	var safe_target := clampf(target, 0.0, OVERFLOW_SCALE)
 	var safe_duration := maxf(duration, 0.01)
 	_pouring = true
+	_draining = false
 	stream.visible = true
 	_tween = create_tween()
 	_tween.tween_method(_set_level, liquid.scale.y, maxf(safe_target, 0.001), safe_duration)
@@ -85,15 +93,12 @@ func pour_to(target: float, duration: float = 1.5) -> void:
 
 
 func _set_level(level: float) -> void:
-	liquid.scale.y = level
-	liquid.visible = level > 0.002
+	fill = level  # keep `fill` in sync if a tween is interrupted; the setter calls _apply()
 	var stream_top := RIM_Y - 0.05
 	stream.position.y = stream_top
 	stream.scale = Vector3(1.0, maxf(stream_top - _surface_y(), 0.01), 1.0)
 	_fx_splash.position.y = _surface_y()
 	_fx_splash.emitting = _pouring
-	_fx_bubbles.emitting = level > 0.05 and level <= 1.0
-	_fx_overflow.emitting = level > 1.0
 
 
 func _finish_pour(target: float) -> void:
@@ -109,15 +114,17 @@ func _finish_pour(target: float) -> void:
 func release() -> void:
 	_kill_tween()
 	_pouring = false
+	_draining = true
 	stream.visible = false
 	_fx_overflow.emitting = false
 	_fx_bubbles.emitting = false
 	_tween = create_tween()
-	_tween.tween_property(latch, "position:x", latch.position.x + 0.18, 0.12)
-	_tween.tween_property(hatch, "rotation:z", -PI / 2.0, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_tween.tween_property(latch, "position:x", _latch_rest_x + 0.18, 0.12)
+	_tween.tween_property(hatch, "rotation:z", _hatch_rest_z - PI / 2.0, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_tween.tween_callback(func() -> void: _fx_drain.restart())
 	_tween.tween_method(_set_level, liquid.scale.y, 0.001, 0.6)
 	_tween.tween_callback(func() -> void:
+		_draining = false
 		set_fill(0.0)
 		released.emit()
 	)
@@ -126,9 +133,10 @@ func release() -> void:
 func reset() -> void:
 	_kill_tween()
 	_pouring = false
-	hatch.rotation.z = 0.0
-	latch.position.x = 0.40
-	valve_wheel.rotation.y = 0.0
+	_draining = false
+	hatch.rotation.z = _hatch_rest_z
+	latch.position.x = _latch_rest_x
+	valve_wheel.rotation.y = _valve_rest_y
 	_fx_drain.emitting = false
 	set_fill(0.0)
 

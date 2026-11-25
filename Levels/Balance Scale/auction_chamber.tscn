@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://5l3d0205kxiv"]
+[gd_scene load_steps=20 format=3 uid="uid://5l3d0205kxiv"]
 
 [ext_resource type="PackedScene" uid="uid://c5grkr0m3cuv0" path="res://assets/balance_scale/auction_chamber.glb" id="1_chamber"]
 [ext_resource type="PackedScene" uid="uid://cxg5pes64mv2k" path="res://assets/balance_scale/auction_table.glb" id="2_table"]
@@ -6,16 +6,43 @@
 [ext_resource type="PackedScene" path="res://Levels/Balance Scale/AcidPot.tscn" id="4_pot"]
 [ext_resource type="PackedScene" uid="uid://c7lihwn2p2wp6" path="res://assets/balance_scale/round_display.glb" id="5_display"]
 [ext_resource type="PackedScene" path="res://Player/player.tscn" id="6_player"]
+[ext_resource type="Script" path="res://Gameplay/BalanceScale/seat.gd" id="seat_script"]
+[ext_resource type="Script" path="res://Gameplay/BalanceScale/seating_controller.gd" id="seating_script"]
+[ext_resource type="PackedScene" path="res://ui/hud/game_hud.tscn" id="hud_scene"]
+[ext_resource type="PackedScene" path="res://assets/the_exit_room/props/prop_camera_wall.glb" id="p_cam"]
+[ext_resource type="PackedScene" path="res://assets/the_exit_room/props/prop_speaker_wall.glb" id="p_spk"]
+[ext_resource type="PackedScene" path="res://assets/the_exit_room/props/prop_emergency_light.glb" id="p_emg"]
+[ext_resource type="PackedScene" path="res://assets/the_exit_room/props/prop_floor_marking_line.glb" id="p_line"]
+[ext_resource type="PackedScene" path="res://assets/the_exit_room/props/prop_floor_marking_arrow.glb" id="p_arrow"]
+[ext_resource type="PackedScene" path="res://assets/the_exit_room/props/prop_floor_marking_hazard.glb" id="p_haz"]
+[ext_resource type="PackedScene" path="res://assets/the_exit_room/props/prop_ceiling_vent.glb" id="p_vent"]
+[ext_resource type="PackedScene" path="res://assets/the_exit_room/props/prop_electrical_panel.glb" id="p_panel"]
 
 [sub_resource type="Environment" id="Environment_main"]
 background_mode = 1
-background_color = Color(0.018, 0.024, 0.035, 1)
-ambient_light_source = 3
-ambient_light_color = Color(0.48, 0.55, 0.66, 1)
-ambient_light_energy = 0.9
-tonemap_mode = 2
+background_color = Color(0.01, 0.012, 0.018, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.5, 0.58, 0.72, 1)
+ambient_light_energy = 0.4
+tonemap_mode = 3
+tonemap_white = 6.0
+ssao_enabled = true
+ssao_radius = 1.2
+ssao_intensity = 2.0
 glow_enabled = true
-glow_intensity = 0.35
+glow_intensity = 0.5
+glow_bloom = 0.04
+glow_hdr_threshold = 1.1
+fog_enabled = true
+fog_light_color = Color(0.2, 0.25, 0.3, 1)
+fog_density = 0.004
+volumetric_fog_enabled = true
+volumetric_fog_density = 0.012
+volumetric_fog_albedo = Color(0.85, 0.9, 1, 1)
+volumetric_fog_length = 16.0
+adjustment_enabled = true
+adjustment_contrast = 1.06
+adjustment_saturation = 0.95
 
 [node name="BalanceScale" type="Node3D" unique_id=1064956684]
 
@@ -31,56 +58,331 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.6, -4.8)
 
 [node name="Seats" type="Node3D" parent="." unique_id=1316376519]
 
-[node name="Seat_East" parent="Seats" unique_id=829446383 instance=ExtResource("3_chair")]
+[node name="Seat_East" parent="Seats" unique_id=829446383 instance=ExtResource("3_chair") node_paths=PackedStringArray("sit_point")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.9, 0, 0)
 
 scale = Vector3(1.5, 1.5, 1.5)
-[node name="Seat_South" parent="Seats" unique_id=1307187031 instance=ExtResource("3_chair")]
+script = ExtResource("seat_script")
+sit_point = NodePath("SitPoint")
+
+[node name="SitPoint" type="Marker3D" parent="Seats/Seat_East"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.44, 0)
+
+[node name="Seat_South" parent="Seats" unique_id=1307187031 instance=ExtResource("3_chair") node_paths=PackedStringArray("sit_point")]
 transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 0, 0, 1.9)
 
 scale = Vector3(1.5, 1.5, 1.5)
-[node name="Seat_West" parent="Seats" unique_id=2137967038 instance=ExtResource("3_chair")]
+script = ExtResource("seat_script")
+sit_point = NodePath("SitPoint")
+
+[node name="SitPoint" type="Marker3D" parent="Seats/Seat_South"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.44, 0)
+
+[node name="Seat_West" parent="Seats" unique_id=2137967038 instance=ExtResource("3_chair") node_paths=PackedStringArray("sit_point")]
 transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -1.9, 0, 0)
 
 scale = Vector3(1.5, 1.5, 1.5)
-[node name="Seat_North" parent="Seats" unique_id=2038345521 instance=ExtResource("3_chair")]
+script = ExtResource("seat_script")
+sit_point = NodePath("SitPoint")
+
+[node name="SitPoint" type="Marker3D" parent="Seats/Seat_West"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.44, 0)
+
+[node name="Seat_North" parent="Seats" unique_id=2038345521 instance=ExtResource("3_chair") node_paths=PackedStringArray("sit_point")]
 transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0, 0, -1.9)
 
 scale = Vector3(1.5, 1.5, 1.5)
+script = ExtResource("seat_script")
+sit_point = NodePath("SitPoint")
+
+[node name="SitPoint" type="Marker3D" parent="Seats/Seat_North"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.44, 0)
+
 [node name="AcidPots" type="Node3D" parent="." unique_id=317422442]
 
 [node name="Pot_East" parent="AcidPots" unique_id=26677322 instance=ExtResource("4_pot")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.9, 2.2, 0)
 
 [node name="Pot_South" parent="AcidPots" unique_id=1503960892 instance=ExtResource("4_pot")]
-transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0, 2.2, 1.9)
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 0, 2.2, 1.9)
 
 [node name="Pot_West" parent="AcidPots" unique_id=2056684372 instance=ExtResource("4_pot")]
 transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -1.9, 2.2, 0)
 
 [node name="Pot_North" parent="AcidPots" unique_id=897251699 instance=ExtResource("4_pot")]
-transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 0, 2.2, -1.9)
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0, 2.2, -1.9)
 
-[node name="Lighting" type="Node3D" parent="." unique_id=1345519027]
+[node name="Lighting" type="Node3D" parent="."]
 
-[node name="KeyLight" type="DirectionalLight3D" parent="Lighting" unique_id=409589981]
-transform = Transform3D(0.8480481, 0.3938068, -0.35458517, 0, 0.66913056, 0.74314487, 0.52991927, -0.63022256, 0.5674549, 0, 0, 0)
-light_color = Color(0.72, 0.82, 1, 1)
+[node name="SpotNE" type="SpotLight3D" parent="Lighting"]
+transform = Transform3D(-0.70711, -0.66903, 0.22891, 0, 0.32372, 0.94615, -0.70711, 0.66903, -0.22891, 1, 3.9, -1)
+light_color = Color(1, 0.92, 0.8, 1)
+light_energy = 3.6
+light_volumetric_fog_energy = 1.2
+shadow_enabled = true
+shadow_bias = 0.04
+spot_range = 6.5
+spot_angle = 42.0
+spot_angle_attenuation = 0.7
+
+[node name="SpotSE" type="SpotLight3D" parent="Lighting"]
+transform = Transform3D(0.70711, -0.66903, 0.22891, 0, 0.32372, 0.94615, -0.70711, -0.66903, 0.22891, 1, 3.9, 1)
+light_color = Color(1, 0.92, 0.8, 1)
+light_energy = 3.6
+light_volumetric_fog_energy = 1.2
+shadow_enabled = true
+shadow_bias = 0.04
+spot_range = 6.5
+spot_angle = 42.0
+spot_angle_attenuation = 0.7
+
+[node name="SpotSW" type="SpotLight3D" parent="Lighting"]
+transform = Transform3D(0.70711, 0.66903, -0.22891, 0, 0.32372, 0.94615, 0.70711, -0.66903, 0.22891, -1, 3.9, 1)
+light_color = Color(1, 0.92, 0.8, 1)
+light_energy = 3.6
+light_volumetric_fog_energy = 1.2
+shadow_enabled = true
+shadow_bias = 0.04
+spot_range = 6.5
+spot_angle = 42.0
+spot_angle_attenuation = 0.7
+
+[node name="SpotNW" type="SpotLight3D" parent="Lighting"]
+transform = Transform3D(-0.70711, 0.66903, -0.22891, 0, 0.32372, 0.94615, 0.70711, 0.66903, -0.22891, -1, 3.9, -1)
+light_color = Color(1, 0.92, 0.8, 1)
+light_energy = 3.6
+light_volumetric_fog_energy = 1.2
+shadow_enabled = true
+shadow_bias = 0.04
+spot_range = 6.5
+spot_angle = 42.0
+spot_angle_attenuation = 0.7
+
+[node name="RoomFill" type="OmniLight3D" parent="Lighting"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.6, 0)
+light_color = Color(0.75, 0.82, 1, 1)
+light_energy = 0.45
+omni_range = 9.0
+omni_attenuation = 1.2
+
+[node name="PotGlow_East" type="OmniLight3D" parent="Lighting"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.9, 2.7, 0)
+light_color = Color(0.6, 1, 0.3, 1)
+light_energy = 0.9
+omni_range = 3.2
+omni_attenuation = 1.5
+
+[node name="PotGlow_South" type="OmniLight3D" parent="Lighting"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.7, 1.9)
+light_color = Color(0.6, 1, 0.3, 1)
+light_energy = 0.9
+omni_range = 3.2
+omni_attenuation = 1.5
+
+[node name="PotGlow_West" type="OmniLight3D" parent="Lighting"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.9, 2.7, 0)
+light_color = Color(0.6, 1, 0.3, 1)
+light_energy = 0.9
+omni_range = 3.2
+omni_attenuation = 1.5
+
+[node name="PotGlow_North" type="OmniLight3D" parent="Lighting"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.7, -1.9)
+light_color = Color(0.6, 1, 0.3, 1)
+light_energy = 0.9
+omni_range = 3.2
+omni_attenuation = 1.5
+
+[node name="WarningLight0" type="OmniLight3D" parent="Lighting"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.2, 3.6, 4.2)
+light_color = Color(1, 0.22, 0.12, 1)
+light_energy = 0.35
+omni_range = 3.2
+
+[node name="WarningLight1" type="OmniLight3D" parent="Lighting"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.2, 3.6, 4.2)
+light_color = Color(1, 0.22, 0.12, 1)
+light_energy = 0.35
+omni_range = 3.2
+
+[node name="WarningLight2" type="OmniLight3D" parent="Lighting"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.2, 3.6, -4.2)
+light_color = Color(1, 0.22, 0.12, 1)
+light_energy = 0.35
+omni_range = 3.2
+
+[node name="WarningLight3" type="OmniLight3D" parent="Lighting"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.2, 3.6, -4.2)
+light_color = Color(1, 0.22, 0.12, 1)
+light_energy = 0.35
+omni_range = 3.2
+
+[node name="DisplayGlow" type="OmniLight3D" parent="Lighting"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.6, -3.9)
+light_color = Color(0.45, 0.75, 1, 1)
 light_energy = 1.2
-shadow_enabled = true
+omni_range = 4.5
 
-[node name="TableLight" type="OmniLight3D" parent="Lighting" unique_id=727854481]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.5, 0)
-light_color = Color(0.78, 1, 0.28, 1)
-light_energy = 3.0
-shadow_enabled = true
-omni_range = 9.0
+[node name="Dressing" type="Node3D" parent="."]
 
-[node name="WallFill" type="OmniLight3D" parent="Lighting" unique_id=2067288202]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.2, -4)
-light_color = Color(0.2, 0.65, 1, 1)
-light_energy = 2.5
-omni_range = 9.0
+[node name="Camera_North" parent="Dressing" instance=ExtResource("p_cam")]
+transform = Transform3D(1, 0, 0, 0, 0.95106, 0.30902, 0, -0.30902, 0.95106, 2.8, 3.4, -5)
+
+[node name="Camera_East" parent="Dressing" instance=ExtResource("p_cam")]
+transform = Transform3D(0, 0.30902, -0.95106, 0, 0.95106, 0.30902, 1, 0, 0, 5, 3.4, 2.8)
+
+[node name="Camera_South" parent="Dressing" instance=ExtResource("p_cam")]
+transform = Transform3D(-1, 0, 0, 0, 0.95106, 0.30902, 0, 0.30902, -0.95106, -2.8, 3.4, 5)
+
+[node name="Camera_West" parent="Dressing" instance=ExtResource("p_cam")]
+transform = Transform3D(0, -0.30902, 0.95106, 0, 0.95106, 0.30902, -1, 0, 0, -5, 3.4, -2.8)
+
+[node name="Speaker_North_-3" parent="Dressing" instance=ExtResource("p_spk")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.3, 3, -5)
+
+[node name="Speaker_North_3" parent="Dressing" instance=ExtResource("p_spk")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.3, 3, -5)
+
+[node name="Speaker_South_-3" parent="Dressing" instance=ExtResource("p_spk")]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 3.3, 3, 5)
+
+[node name="Speaker_South_3" parent="Dressing" instance=ExtResource("p_spk")]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -3.3, 3, 5)
+
+[node name="Emergency_North" parent="Dressing" instance=ExtResource("p_emg")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.8, 3.5, -5)
+
+[node name="Emergency_East" parent="Dressing" instance=ExtResource("p_emg")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 5, 3.5, -2.8)
+
+[node name="Emergency_South" parent="Dressing" instance=ExtResource("p_emg")]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 2.8, 3.5, 5)
+
+[node name="Emergency_West" parent="Dressing" instance=ExtResource("p_emg")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -5, 3.5, 2.8)
+
+[node name="ElectricalPanel" parent="Dressing" instance=ExtResource("p_panel")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 5, 1.3, -3.6)
+
+[node name="Vent0" parent="Dressing" instance=ExtResource("p_vent")]
+transform = Transform3D(1, 0, 0, 0, -1, 0, 0, 0, -1, 3.0, 4.1, 3.0)
+
+[node name="Vent1" parent="Dressing" instance=ExtResource("p_vent")]
+transform = Transform3D(1, 0, 0, 0, -1, 0, 0, 0, -1, -3.0, 4.1, 3.0)
+
+[node name="Vent2" parent="Dressing" instance=ExtResource("p_vent")]
+transform = Transform3D(1, 0, 0, 0, -1, 0, 0, 0, -1, -3.0, 4.1, -3.0)
+
+[node name="Vent3" parent="Dressing" instance=ExtResource("p_vent")]
+transform = Transform3D(1, 0, 0, 0, -1, 0, 0, 0, -1, 3.0, 4.1, -3.0)
+
+[node name="Ring_N0" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.256, 0.01, -2.75)
+
+[node name="Ring_N1" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.504, 0.01, -2.75)
+
+[node name="Ring_N2" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.752, 0.01, -2.75)
+
+[node name="Ring_N3" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.01, -2.75)
+
+[node name="Ring_N4" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.752, 0.01, -2.75)
+
+[node name="Ring_N5" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.504, 0.01, -2.75)
+
+[node name="Ring_N6" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.256, 0.01, -2.75)
+
+[node name="Ring_E0" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 2.75, 0.01, -2.256)
+
+[node name="Ring_E1" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 2.75, 0.01, -1.504)
+
+[node name="Ring_E2" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 2.75, 0.01, -0.752)
+
+[node name="Ring_E3" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 2.75, 0.01, 0)
+
+[node name="Ring_E4" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 2.75, 0.01, 0.752)
+
+[node name="Ring_E5" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 2.75, 0.01, 1.504)
+
+[node name="Ring_E6" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 2.75, 0.01, 2.256)
+
+[node name="Ring_S0" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.256, 0.01, 2.75)
+
+[node name="Ring_S1" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.504, 0.01, 2.75)
+
+[node name="Ring_S2" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.752, 0.01, 2.75)
+
+[node name="Ring_S3" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.01, 2.75)
+
+[node name="Ring_S4" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.752, 0.01, 2.75)
+
+[node name="Ring_S5" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.504, 0.01, 2.75)
+
+[node name="Ring_S6" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.256, 0.01, 2.75)
+
+[node name="Ring_W0" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -2.75, 0.01, -2.256)
+
+[node name="Ring_W1" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -2.75, 0.01, -1.504)
+
+[node name="Ring_W2" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -2.75, 0.01, -0.752)
+
+[node name="Ring_W3" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -2.75, 0.01, 0)
+
+[node name="Ring_W4" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -2.75, 0.01, 0.752)
+
+[node name="Ring_W5" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -2.75, 0.01, 1.504)
+
+[node name="Ring_W6" parent="Dressing" instance=ExtResource("p_line")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -2.75, 0.01, 2.256)
+
+[node name="Arrow_E" parent="Dressing" instance=ExtResource("p_arrow")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 3.5, 0.012, 0)
+
+[node name="Hazard_E" parent="Dressing" instance=ExtResource("p_haz")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 4.4, 0.012, 0)
+
+[node name="Arrow_S" parent="Dressing" instance=ExtResource("p_arrow")]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0.012, 3.5)
+
+[node name="Hazard_S" parent="Dressing" instance=ExtResource("p_haz")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.012, 4.4)
+
+[node name="Arrow_W" parent="Dressing" instance=ExtResource("p_arrow")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -3.5, 0.012, 0)
+
+[node name="Hazard_W" parent="Dressing" instance=ExtResource("p_haz")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -4.4, 0.012, 0)
+
+[node name="Arrow_N" parent="Dressing" instance=ExtResource("p_arrow")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.012, -3.5)
+
+[node name="Hazard_N" parent="Dressing" instance=ExtResource("p_haz")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.012, -4.4)
 
 [node name="PlayerSpawns" type="Node3D" parent="." unique_id=766220219]
 
@@ -89,8 +391,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0.8, 0)
 rotation_degrees = Vector3(0, 90, 0)
 
 [node name="Spawn_South" type="Marker3D" parent="PlayerSpawns" unique_id=1830097673]
-transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0, 0.8, 3)
-rotation_degrees = Vector3(0, 180, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 3)
 
 [node name="Spawn_West" type="Marker3D" parent="PlayerSpawns" unique_id=1328543686]
 transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -3, 0.8, 0)
@@ -109,3 +410,17 @@ camera_pivot_height = 0.7
 camera_shoulder_offset = 0.4
 pitch_min_deg = -30.0
 face_camera_direction = false
+
+[node name="UI" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="GameHUD" parent="UI" instance=ExtResource("hud_scene")]
+show_round_info = false
+show_player_list = false
+show_local_panel = false
+allow_transfers = false
+
+[node name="Seating" type="Node" parent="." node_paths=PackedStringArray("hud", "seats_root")]
+script = ExtResource("seating_script")
+hud = NodePath("../UI/GameHUD")
+seats_root = NodePath("../Seats")

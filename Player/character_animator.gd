@@ -48,6 +48,7 @@ var _t := 0.0
 var _phase := 0.0
 var _move_w := 0.0
 var _air_w := 0.0
+var _sit_w := 0.0
 
 const BONE_NAMES := [
 	"Hips", "Spine", "Chest", "Neck", "Head",
@@ -177,7 +178,9 @@ func _process(delta: float) -> void:
 	var h_speed := Vector2(body.velocity.x, body.velocity.z).length()
 	var sr := clampf(h_speed / max_speed, 0.0, 1.0)
 	_move_w = lerpf(_move_w, sr, 1.0 - exp(-12.0 * delta))
-	_air_w = move_toward(_air_w, 0.0 if body.is_on_floor() else 1.0, delta * 8.0)
+	var sitting: bool = body.get("seated") == true
+	_sit_w = move_toward(_sit_w, 1.0 if sitting else 0.0, delta * 4.0)
+	_air_w = move_toward(_air_w, 0.0 if (body.is_on_floor() or sitting) else 1.0, delta * 8.0)
 	_phase = fmod(_phase + delta * TAU * cycles_per_second * _move_w, TAU)
 
 	var amp := _move_w * (1.0 - _air_w)   # how much ground locomotion is visible
@@ -214,8 +217,12 @@ func _process(delta: float) -> void:
 	# --- Legs ---
 	var thigh_l := leg_swing_deg * s * amp + air_thigh_deg * _air_w
 	var thigh_r := -leg_swing_deg * s * amp + air_thigh_deg * 0.2 * _air_w
+	thigh_l = lerpf(thigh_l, 88.0, _sit_w)
+	thigh_r = lerpf(thigh_r, 88.0, _sit_w)
 	var knee_l := knee_bend_deg * maxf(0.0, c) * amp + 4.0 * amp + air_knee_deg * _air_w
 	var knee_r := knee_bend_deg * maxf(0.0, -c) * amp + 4.0 * amp + air_knee_deg * 0.4 * _air_w
+	knee_l = lerpf(knee_l, 88.0, _sit_w)
+	knee_r = lerpf(knee_r, 88.0, _sit_w)
 
 	_apply("LeftUpperLeg", _pitch(thigh_l))
 	_apply("LeftLowerLeg", _pitch(-knee_l))
@@ -223,13 +230,15 @@ func _process(delta: float) -> void:
 	_apply("RightLowerLeg", _pitch(-knee_r))
 
 	# Feet stay roughly level: toes up when the leg is forward, down when pushing off.
-	_apply_abs("LeftFoot", _pitch(0.4 * thigh_l * (1.0 - _air_w) - 10.0 * _air_w))
-	_apply_abs("RightFoot", _pitch(0.4 * thigh_r * (1.0 - _air_w) - 10.0 * _air_w))
+	_apply_abs("LeftFoot", _pitch(lerpf(0.4 * thigh_l * (1.0 - _air_w) - 10.0 * _air_w, 0.0, _sit_w)))
+	_apply_abs("RightFoot", _pitch(lerpf(0.4 * thigh_r * (1.0 - _air_w) - 10.0 * _air_w, 0.0, _sit_w)))
 
 	# --- Arms (swing opposite to the legs) ---
 	var arm_l := -arm_swing_deg * s * amp + air_arm_deg * _air_w + sway * idle_sway_deg * idle
 	var arm_r := arm_swing_deg * s * amp + air_arm_deg * _air_w - sway * idle_sway_deg * idle
-	var elbow := 14.0 + elbow_bend_deg * amp + 10.0 * _air_w
+	arm_l = lerpf(arm_l, 38.0, _sit_w)
+	arm_r = lerpf(arm_r, 38.0, _sit_w)
+	var elbow := lerpf(14.0 + elbow_bend_deg * amp + 10.0 * _air_w, 75.0, _sit_w)
 
 	_apply("LeftUpperArm", _pitch(arm_l) * _arm_relax["Left"])
 	_apply("LeftLowerArm", _pitch(elbow))

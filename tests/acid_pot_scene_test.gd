@@ -29,13 +29,17 @@ func _run() -> void:
 		_finish()
 		return
 
+	var latch_rest := pot.latch.position.x
 	pot.fill = 0.5
 	_check(is_equal_approx(pot.fill, 0.5) and is_equal_approx(pot.liquid.scale.y, 0.5), "manual fill updates the liquid mesh")
 
 	var overflow_seen := [false]
 	pot.overflowed.connect(func() -> void: overflow_seen[0] = true)
 	pot.pour_to(1.1, 0.05)
-	await create_timer(0.15).timeout
+	for i in 300:  # wait for the animation (frame rate varies), at most ~5 s
+		if is_equal_approx(pot.fill, 1.1):
+			break
+		await process_frame
 	_check(is_equal_approx(pot.fill, 1.1), "pour animation can reach the overflow range")
 	_check(overflow_seen[0] and pot._fx_overflow.emitting, "overflow triggers the signal and overflow particles")
 
@@ -47,7 +51,29 @@ func _run() -> void:
 	_check(is_equal_approx(pot.fill, 0.0), "release drains the pot")
 
 	pot.reset()
+	pot.release()
+	await create_timer(1.1).timeout
+	pot.release()
+	await create_timer(1.1).timeout
+	_check(is_equal_approx(pot.latch.position.x, latch_rest + 0.18), "repeated release does not drift the latch")
+	pot.reset()
+	_check(is_equal_approx(pot.latch.position.x, latch_rest), "reset restores the latch")
 	_check(is_equal_approx(pot.fill, 0.0) and is_equal_approx(pot.hatch.rotation.z, 0.0), "reset restores the pot")
+	# Chairs face local -X, pipes run local +X: seats must face the table, pipes must run toward the wall.
+	for side in ["East", "South", "West", "North"]:
+		var seat := chamber.get_node("Seats/Seat_" + side) as Node3D
+		var facing := -seat.global_transform.basis.x.normalized()
+		_check(facing.dot((-seat.global_position).normalized()) > 0.99, "seat %s faces the table" % side)
+		var pot_node := chamber.get_node("AcidPots/Pot_" + side) as Node3D
+		var outward := Vector3(pot_node.global_position.x, 0.0, pot_node.global_position.z).normalized()
+		_check(pot_node.global_transform.basis.x.normalized().dot(outward) > 0.99, "pot %s pipes run toward the wall" % side)
+		var spawn := chamber.get_node("PlayerSpawns/Spawn_" + side) as Node3D
+		var forward := -spawn.global_transform.basis.z
+		_check(forward.dot((-spawn.global_position * Vector3(1, 0, 1)).normalized()) > 0.99, "spawn %s faces the table" % side)
+	# Ambient light must not come from a sky the scene does not have (that gives pitch-black shadows).
+	var env := (chamber.get_node("WorldEnvironment") as WorldEnvironment).environment
+	_check(env.ambient_light_source != Environment.AMBIENT_SOURCE_SKY or env.background_mode == Environment.BG_SKY, "room has real ambient light")
+	_check(chamber.get_node("Lighting").find_children("*", "SpotLight3D", false, false).size() >= 4, "table is lit by spot lights")
 	chamber.queue_free()
 	_finish()
 

@@ -36,6 +36,10 @@ extends CharacterBody3D
 @export_range(-89.0, 0.0) var pitch_min_deg : float = -70.0   # looking down
 @export_range(0.0, 89.0) var pitch_max_deg : float = 30.0     # looking up
 
+@export_group("Seating")
+## While seated the player can only look around this far (degrees) left/right of the table.
+@export_range(10.0, 180.0) var seated_look_limit_deg : float = 100.0
+
 @export_group("Model")
 @export var rotation_speed : float = 12.0
 ## true  = character always faces where the camera looks (mouse turns the body).
@@ -53,6 +57,14 @@ var _yaw : float = 0.0
 var _first_person : bool = false
 var _cam_dist : float = 0.0   # current (smoothed) camera distance
 var _pitch : float = 0.0
+
+## True while the player sits on a chair (set by sit_down / stand_up). A seated player
+## cannot walk or jump, but can still look around.
+var seated : bool = false
+var seat : Node3D = null
+var _seat_yaw : float = 0.0           # head yaw (local) that looks straight at the table
+var _seat_face_yaw : float = 0.0      # world yaw of the direction the seated body faces
+var _seat_position := Vector3.ZERO
 
 @onready var head: Node3D = $Head
 ## The node that holds your character (the .glb). Leave empty to find it automatically.
@@ -167,6 +179,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			deg_to_rad(pitch_min_deg),
 			deg_to_rad(pitch_max_deg)
 		)
+		if seated:
+			var limit := deg_to_rad(seated_look_limit_deg)
+			_yaw = _seat_yaw + clampf(wrapf(_yaw - _seat_yaw, -PI, PI), -limit, limit)
 		head.rotation = Vector3(_pitch, _yaw, 0.0)
 	elif event.is_action_pressed("toggle_camera"):
 		_first_person = not _first_person
@@ -177,6 +192,15 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if seated:
+		# Glued to the chair: no gravity, no walking. Only the camera and the body turn.
+		velocity = Vector3.ZERO
+		global_position = _seat_position
+		_update_camera()
+		if model:
+			model.global_rotation.y = lerp_angle(model.global_rotation.y, _seat_face_yaw + PI, 1.0 - exp(-rotation_speed * delta))
+		return
+
 	# Gravity (falls faster than it rises, for a snappier jump).
 	if not is_on_floor():
 		if velocity.y >= 0.0:
@@ -208,12 +232,59 @@ func _physics_process(delta: float) -> void:
 	_update_camera()
 
 	# Turn only the model; the body and the camera pivot stay put.
+	# The character mesh faces +Z (Godot's "back"), so a yaw of Y points its face along
+	# atan2-style world direction: facing the camera look direction needs an extra 180 degrees.
+	# Everything here is in WORLD space, so it still works when the Player node itself is
+	# rotated in a level (e.g. spawned at a seat with rotation_degrees = (0, 90, 0)).
 	if model:
 		var target_yaw : float
 		if face_camera_direction or _first_person:
-			target_yaw = _yaw + deg_to_rad(model_yaw_offset_deg)
+			target_yaw = head.global_rotation.y + PI + deg_to_rad(model_yaw_offset_deg)
 		elif direction != Vector3.ZERO:
 			target_yaw = atan2(direction.x, direction.z) + deg_to_rad(model_yaw_offset_deg)
 		else:
 			return
-		model.rotation.y = lerp_angle(model.rotation.y, target_yaw, 1.0 - exp(-rotation_speed * delta))
+		model.global_rotation.y = lerp_angle(model.global_rotation.y, target_yaw, 1.0 - exp(-rotation_speed * delta))
+
+
+## Sit on a chair. `seat_node` is whatever holds the chair (AuctionSeat), `sit_position` is
+## the middle of the seat surface in world space, `forward` is the direction to face.
+func sit_down(seat_node: Node3D, sit_position: Vector3, forward: Vector3) -> void:
+	seat = seat_node
+	seated = true
+	velocity = Vector3.ZERO
+	var shape := get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if shape:
+		shape.set_deferred("disabled", true)
+	# Put the hips on the seat: the body origin is a little above the hips.
+	_seat_position = Vector3(sit_position.x, sit_position.y - _hips_above_origin() + 0.02, sit_position.z)
+	global_position = _seat_position
+	_seat_face_yaw = atan2(-forward.x, -forward.z)
+	_seat_yaw = wrapf(_seat_face_yaw - global_rotation.y, -PI, PI)
+	_yaw = _seat_yaw
+	_pitch = deg_to_rad(-10.0)
+	head.rotation = Vector3(_pitch, _yaw, 0.0)
+	if model:
+		model.global_rotation.y = _seat_face_yaw + PI
+
+
+## Leave the chair and stand at `stand_position` (world space, body origin).
+func stand_up(stand_position: Vector3) -> void:
+	seated = false
+	seat = null
+	velocity = Vector3.ZERO
+	global_position = stand_position
+	var shape := get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if shape:
+		shape.set_deferred("disabled", false)
+
+
+## Height of the character's hips above the body origin (measured from the skeleton).
+func _hips_above_origin() -> float:
+	var skeletons := find_children("*", "Skeleton3D", true, false)
+	if skeletons.size() > 0:
+		var sk := skeletons[0] as Skeleton3D
+		var hips := sk.find_bone("Hips")
+		if hips != -1:
+			return (sk.global_transform * sk.get_bone_global_rest(hips)).origin.y - global_position.y
+	return 0.05
