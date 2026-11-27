@@ -55,6 +55,7 @@ var input_blocked : bool = false
 
 var _yaw : float = 0.0
 var _first_person : bool = false
+var _first_person_before_sit : bool = false
 var _cam_dist : float = 0.0   # current (smoothed) camera distance
 var _pitch : float = 0.0
 
@@ -140,7 +141,7 @@ func _setup_camera() -> void:
 ## Places the camera behind the Head pivot (local +Z is "behind" the look direction).
 func _update_camera() -> void:
 	# Smoothly slide between first person (distance 0) and third person.
-	var target := 0.0 if _first_person else camera_distance
+	var target := 0.0 if (_first_person or seated) else camera_distance
 	_cam_dist = lerpf(_cam_dist, target, 1.0 - exp(-12.0 * get_physics_process_delta_time()))
 	if absf(_cam_dist - target) < 0.01:
 		_cam_dist = target
@@ -184,7 +185,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_yaw = _seat_yaw + clampf(wrapf(_yaw - _seat_yaw, -PI, PI), -limit, limit)
 		head.rotation = Vector3(_pitch, _yaw, 0.0)
 	elif event.is_action_pressed("toggle_camera"):
-		_first_person = not _first_person
+		if not seated:   # a seated player stays in first person (no looking at the table from outside)
+			_first_person = not _first_person
 	elif event is InputEventMouseButton and event.pressed \
 			and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE:
 		# Click the game window to take the mouse back.
@@ -252,6 +254,9 @@ func _physics_process(delta: float) -> void:
 func sit_down(seat_node: Node3D, sit_position: Vector3, forward: Vector3) -> void:
 	seat = seat_node
 	seated = true
+	_first_person_before_sit = _first_person
+	_first_person = true
+	_cam_dist = 0.0
 	velocity = Vector3.ZERO
 	var shape := get_node_or_null("CollisionShape3D") as CollisionShape3D
 	if shape:
@@ -272,6 +277,7 @@ func sit_down(seat_node: Node3D, sit_position: Vector3, forward: Vector3) -> voi
 func stand_up(stand_position: Vector3) -> void:
 	seated = false
 	seat = null
+	_first_person = _first_person_before_sit
 	velocity = Vector3.ZERO
 	global_position = stand_position
 	var shape := get_node_or_null("CollisionShape3D") as CollisionShape3D

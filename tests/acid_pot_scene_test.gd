@@ -70,6 +70,16 @@ func _run() -> void:
 		var spawn := chamber.get_node("PlayerSpawns/Spawn_" + side) as Node3D
 		var forward := -spawn.global_transform.basis.z
 		_check(forward.dot((-spawn.global_position * Vector3(1, 0, 1)).normalized()) > 0.99, "spawn %s faces the table" % side)
+	# Room height: pots hang higher in a 5.1 m room, with their feed pipes meeting the ceiling pipe ring.
+	var room_top := 0.0
+	for mesh in chamber.get_node("Chamber").find_children("*", "MeshInstance3D", true, false):
+		room_top = maxf(room_top, (mesh as MeshInstance3D).global_transform.origin.y + (mesh as MeshInstance3D).get_aabb().end.y)
+	_check(room_top >= 5.1, "the room is 5.1 m tall (top at %.2f m)" % room_top)
+	for side in ["East", "South", "West", "North"]:
+		var hung := chamber.get_node("AcidPots/Pot_" + side) as Node3D
+		_check(is_equal_approx(hung.global_position.y, 2.8), "pot %s hangs at 2.8 m" % side)
+	for spot in chamber.get_node("Lighting").find_children("*", "SpotLight3D", false, false):
+		_check((spot as Node3D).global_position.y < room_top and (spot as Node3D).global_position.y > 4.0, "spot light %s sits just under the ceiling" % spot.name)
 	# Ambient light must not come from a sky the scene does not have (that gives pitch-black shadows).
 	var env := (chamber.get_node("WorldEnvironment") as WorldEnvironment).environment
 	_check(env.ambient_light_source != Environment.AMBIENT_SOURCE_SKY or env.background_mode == Environment.BG_SKY, "room has real ambient light")

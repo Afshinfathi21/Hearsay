@@ -38,7 +38,7 @@ base_floor = NodePath("../Floor")
 player = NodePath("../Player")
 point_budget = 20
 min_route_margin = 3
-minigame_fraction = 0.2
+minigame_fraction = 0.0
 
 [node name="GridMap" type="GridMap" parent="Node3D" unique_id=1673236768]
 cell_center_y = false

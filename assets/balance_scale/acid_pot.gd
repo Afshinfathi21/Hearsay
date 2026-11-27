@@ -73,6 +73,15 @@ func _apply() -> void:
 	_fx_overflow.emitting = fill > 1.0 and not _draining
 
 
+## 0 safe (green), 1 warning, 2 high, 3 critical or worse (red, fast pulse).
+func set_danger(level: int) -> void:
+	var colors := [Color(0.72, 0.95, 0.22, 0.85), Color(0.95, 0.85, 0.2, 0.85), Color(1.0, 0.5, 0.12, 0.88), Color(1.0, 0.16, 0.1, 0.9)]
+	var speeds := [2.0, 3.0, 5.0, 8.0]
+	var i := clampi(level, 0, 3)
+	_acid_mat.set_shader_parameter("acid_color", colors[i])
+	_acid_mat.set_shader_parameter("pulse_speed", speeds[i])
+
+
 ## Animate the liquid to a target fill. Values above 1.0 spill over the rim.
 func pour_to(target: float, duration: float = 1.5) -> void:
 	_kill_tween()

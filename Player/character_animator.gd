@@ -50,6 +50,10 @@ var _move_w := 0.0
 var _air_w := 0.0
 var _sit_w := 0.0
 
+## Sitting pose: arms hang straight down by the sides, hands resting low.
+@export_range(-30.0, 90.0) var sit_arm_deg := 2.0
+@export_range(0.0, 140.0) var sit_elbow_deg := 18.0
+
 const BONE_NAMES := [
 	"Hips", "Spine", "Chest", "Neck", "Head",
 	"LeftShoulder", "LeftUpperArm", "LeftLowerArm", "LeftHand",
@@ -236,9 +240,9 @@ func _process(delta: float) -> void:
 	# --- Arms (swing opposite to the legs) ---
 	var arm_l := -arm_swing_deg * s * amp + air_arm_deg * _air_w + sway * idle_sway_deg * idle
 	var arm_r := arm_swing_deg * s * amp + air_arm_deg * _air_w - sway * idle_sway_deg * idle
-	arm_l = lerpf(arm_l, 38.0, _sit_w)
-	arm_r = lerpf(arm_r, 38.0, _sit_w)
-	var elbow := lerpf(14.0 + elbow_bend_deg * amp + 10.0 * _air_w, 75.0, _sit_w)
+	arm_l = lerpf(arm_l, sit_arm_deg, _sit_w)
+	arm_r = lerpf(arm_r, sit_arm_deg, _sit_w)
+	var elbow := lerpf(14.0 + elbow_bend_deg * amp + 10.0 * _air_w, sit_elbow_deg, _sit_w)
 
 	_apply("LeftUpperArm", _pitch(arm_l) * _arm_relax["Left"])
 	_apply("LeftLowerArm", _pitch(elbow))
