@@ -1,0 +1,2292 @@
+diff --git a/Gameplay/BalanceScale/auction_match.gd b/Gameplay/BalanceScale/auction_match.gd
+new file mode 100644
+index 0000000..de22883
+--- /dev/null
++++ b/Gameplay/BalanceScale/auction_match.gd
+@@ -0,0 +1,327 @@
++class_name AuctionMatch
++extends Node
++## Host-side match flow for the Balance Scale level: the 12 states of
++## docs/balance_scale_design.md section 4, the bidding timer, bot bidders and all bid
++## validation. It owns the BalanceScaleGame rules object and never touches the scene.
++##
++## Everything a client may see comes from public_view() / private_view(); a bid is only
++## revealed through `round_revealed`. Presentation code (AuctionPresenter) listens to the
++## signals. Time only moves through advance(), so tests can drive it with a fake clock.
++
++signal state_changed(new_state: int, round_number: int)
++signal bid_locked(player_id: int, auto: bool)
++signal round_revealed(result: Dictionary)
++signal winner_announced(result: Dictionary)
++signal acid_applied(result: Dictionary)
++signal player_eliminated(player_id: int, reason: String)
++signal game_finished(winner_id: int)
++
++enum S {
++	WAITING_FOR_PLAYERS, SEATING, ROUND_INTRO, PENALTY_ANNOUNCE, BIDDING,
++	WAITING_FOR_SUBMISSIONS, BID_REVEAL, WINNER_ANNOUNCE, ACID_APPLY,
++	ELIMINATION_CHECK, NEXT_ROUND_PREP, GAME_OVER,
++}
++
++const STATE_LABELS := {
++	S.WAITING_FOR_PLAYERS: "WAITING", S.SEATING: "TAKE YOUR SEAT", S.ROUND_INTRO: "NEW ROUND",
++	S.PENALTY_ANNOUNCE: "PENALTY", S.BIDDING: "BIDDING", S.WAITING_FOR_SUBMISSIONS: "WAITING FOR BIDS",
++	S.BID_REVEAL: "REVEAL", S.WINNER_ANNOUNCE: "RESULT", S.ACID_APPLY: "ACID",
++	S.ELIMINATION_CHECK: "ELIMINATION", S.NEXT_ROUND_PREP: "NEXT ROUND", S.GAME_OVER: "GAME OVER",
++}
++
++var config: BalanceScaleConfig = BalanceScaleConfig.new()
++var game: BalanceScaleGame
++var state: int = S.WAITING_FOR_PLAYERS
++var time_left := 0.0
++var time_total := 0.0
++## true: the node advances itself every frame. Tests set false and call advance().
++var use_process := true
++var rng := RandomNumberGenerator.new()
++
++var players: Array[Dictionary] = []   # {id, name, is_bot, seat, personality}
++var last_result: Dictionary = {}
++
++var _bids: Dictionary = {}            # id -> int. HOST PRIVATE until the reveal.
++var _locked: Dictionary = {}          # id -> true
++var _think: Dictionary = {}           # bot id -> seconds until it submits
++var _bid_elapsed := 0.0
++var _elim_queue: Array = []
++var _revealed := false
++
++
++func _process(delta: float) -> void:
++	if use_process:
++		advance(delta)
++
++
++## players: [{id, name, is_bot, seat, personality}]. Needs at least two. Moves to SEATING.
++func setup(player_list: Array[Dictionary], cfg: BalanceScaleConfig = null) -> bool:
++	if cfg != null:
++		config = cfg
++	players = player_list.duplicate()
++	var ids: Array[int] = []
++	for p in players:
++		ids.append(int(p["id"]))
++	game = BalanceScaleGame.new()
++	if not game.setup_with_config(ids, config):
++		return false
++	game.rng.seed = rng.randi()
++	_set_state(S.SEATING, 0.0)
++	return true
++
++
++## Everybody is seated: the first round begins.
++func start_rounds() -> void:
++	if state == S.SEATING:
++		_enter_intro()
++
++
++func round_number() -> int:
++	return game.round_number if game != null else 0
++
++
++func is_over() -> bool:
++	return state == S.GAME_OVER
++
++
++func state_label() -> String:
++	return str(STATE_LABELS.get(state, ""))
++
++
++func is_bidding() -> bool:
++	return state == S.BIDDING or state == S.WAITING_FOR_SUBMISSIONS
++
++
++# ------------------------------------------------------------------ bids
++
++## The only way a bid enters the game. Returns true when the bid was accepted.
++func submit_bid(player_id: int, amount: Variant) -> bool:
++	if not is_bidding() or game == null or game.state != BalanceScaleGame.State.RUNNING:
++		return false
++	if typeof(amount) != TYPE_INT:
++		return false
++	if not game.points.has(player_id) or bool(game.eliminated[player_id]):
++		return false
++	if _locked.has(player_id):
++		return false                       # one bid per round, never changeable
++	if int(amount) < 0 or int(amount) > int(game.points[player_id]):
++		return false
++	_lock(player_id, int(amount), false)
++	_after_lock()
++	return true
++
++
++## A player left. Their bid (even a submitted one) is discarded and they are eliminated.
++func player_disconnected(player_id: int) -> void:
++	if game == null or game.state != BalanceScaleGame.State.RUNNING:
++		return
++	if not game.points.has(player_id) or bool(game.eliminated[player_id]):
++		return
++	_bids.erase(player_id)
++	_locked.erase(player_id)
++	_think.erase(player_id)
++	var result := game.forfeit(player_id)
++	if not bool(result.get("ok", false)):
++		return
++	player_eliminated.emit(player_id, BalanceScaleGame.REASON_DISCONNECTED)
++	if game.state == BalanceScaleGame.State.ENDED:
++		_enter_game_over()
++	elif is_bidding():
++		_after_lock()
++
++
++# ------------------------------------------------------------------ views
++
++## What every client may know. Never contains a bid or anybody's points.
++func public_view() -> Dictionary:
++	var list: Array = []
++	for p in players:
++		var id: int = p["id"]
++		list.append({
++			"id": id, "name": p["name"], "seat": p["seat"], "is_bot": p["is_bot"],
++			"alive": not bool(game.eliminated[id]),
++			"acid": int(game.acid[id]),
++			"locked": _locked.has(id),
++		})
++	return {
++		"state": state, "state_label": state_label(), "round": game.round_number,
++		"penalty": game.current_penalty(), "capacity": config.capacity,
++		"time_left": time_left, "time_total": time_total, "players": list,
++	}
++
++
++## Only this player's own secret data.
++func private_view(player_id: int) -> Dictionary:
++	var snap := game.private_snapshot(player_id)
++	if snap.is_empty():
++		return snap
++	snap["bid_locked"] = _locked.has(player_id)
++	snap["next_loss_is_fatal"] = int(snap["points"]) < game.current_penalty()
++	return snap
++
++
++func alive_humans() -> int:
++	var n := 0
++	for p in players:
++		if not bool(p["is_bot"]) and not bool(game.eliminated[p["id"]]):
++			n += 1
++	return n
++
++
++func player_info(player_id: int) -> Dictionary:
++	for p in players:
++		if int(p["id"]) == player_id:
++			return p
++	return {}
++
++
++# ------------------------------------------------------------------ clock
++
++func advance(delta: float) -> void:
++	if state == S.WAITING_FOR_PLAYERS or state == S.SEATING or state == S.GAME_OVER:
++		return
++	# With no human left alive the bots finish the game quickly.
++	if alive_humans() == 0:
++		delta *= 4.0
++	if is_bidding():
++		_bid_elapsed += delta
++		_run_bots()
++		if not is_bidding():
++			return
++	time_left = maxf(0.0, time_left - delta)
++	if time_left <= 0.0:
++		_on_timeout()
++
++
++func _on_timeout() -> void:
++	match state:
++		S.ROUND_INTRO:
++			_set_state(S.PENALTY_ANNOUNCE, config.penalty_seconds)
++		S.PENALTY_ANNOUNCE:
++			_enter_bidding()
++		S.BIDDING, S.WAITING_FOR_SUBMISSIONS:
++			# Nothing submitted by the deadline means a bid of 0.
++			for id in game.active_player_ids():
++				if not _locked.has(id):
++					_lock(id, 0, true)
++			_resolve_and_reveal()
++		S.BID_REVEAL:
++			_set_state(S.WINNER_ANNOUNCE, config.winner_seconds)
++			winner_announced.emit(last_result)
++		S.WINNER_ANNOUNCE:
++			_set_state(S.ACID_APPLY, config.acid_seconds)
++			acid_applied.emit(last_result)
++		S.ACID_APPLY:
++			_elim_queue = last_result.get("eliminations", []).duplicate()
++			_next_elimination()
++		S.ELIMINATION_CHECK:
++			_next_elimination()
++		S.NEXT_ROUND_PREP:
++			_enter_intro()
++
++
++# ------------------------------------------------------------------ transitions
++
++func _enter_intro() -> void:
++	_bids.clear()
++	_locked.clear()
++	_revealed = false
++	_set_state(S.ROUND_INTRO, config.intro_seconds)
++
++
++func _enter_bidding() -> void:
++	_bid_elapsed = 0.0
++	_think.clear()
++	var latest := maxf(3.0, config.bid_seconds - 4.0)
++	for p in players:
++		var id: int = p["id"]
++		if bool(p["is_bot"]) and not bool(game.eliminated[id]):
++			_think[id] = rng.randf_range(2.0, latest)
++	_set_state(S.BIDDING, config.bid_seconds)
++	if alive_humans() == 0:
++		return
++
++
++func _run_bots() -> void:
++	for id in _think.keys():
++		if _locked.has(id) or bool(game.eliminated[id]):
++			continue
++		if _bid_elapsed >= float(_think[id]):
++			var info := player_info(id)
++			var bid := BotBidder.choose_bid(str(info.get("personality", "adaptive")),
++				int(game.points[id]), int(game.acid[id]), config.capacity, game.current_penalty(), rng)
++			submit_bid(id, bid)
++			if not is_bidding():
++				return
++
++
++func _lock(player_id: int, amount: int, auto: bool) -> void:
++	_bids[player_id] = amount
++	_locked[player_id] = true
++	bid_locked.emit(player_id, auto)
++
++
++func _after_lock() -> void:
++	if not is_bidding():
++		return
++	var humans_waiting := false
++	var anyone_waiting := false
++	for id in game.active_player_ids():
++		if _locked.has(id):
++			continue
++		anyone_waiting = true
++		if not bool(player_info(id).get("is_bot", false)):
++			humans_waiting = true
++	if not anyone_waiting:
++		_resolve_and_reveal()
++	elif not humans_waiting and state == S.BIDDING:
++		_set_state_keep_time(S.WAITING_FOR_SUBMISSIONS)
++
++
++func _resolve_and_reveal() -> void:
++	if _revealed:
++		return                                 # a round is resolved exactly once
++	last_result = game.resolve_round(_bids)
++	if not bool(last_result.get("ok", false)):
++		push_error("AuctionMatch: round could not be resolved: %s" % last_result.get("error", "?"))
++		_enter_game_over()
++		return
++	_revealed = true
++	_set_state(S.BID_REVEAL, config.reveal_seconds)
++	round_revealed.emit(last_result)
++
++
++func _next_elimination() -> void:
++	if _elim_queue.is_empty():
++		_after_round()
++		return
++	var entry: Dictionary = _elim_queue.pop_front()
++	_set_state(S.ELIMINATION_CHECK, config.elimination_seconds)
++	player_eliminated.emit(int(entry["id"]), str(entry["reason"]))
++
++
++func _after_round() -> void:
++	if game.state == BalanceScaleGame.State.ENDED:
++		_enter_game_over()
++	else:
++		_set_state(S.NEXT_ROUND_PREP, config.next_round_seconds)
++
++
++func _enter_game_over() -> void:
++	if state == S.GAME_OVER:
++		return
++	_set_state(S.GAME_OVER, 0.0)
++	game_finished.emit(game.winner_id)
++
++
++func _set_state(new_state: int, duration: float) -> void:
++	state = new_state
++	time_total = duration
++	time_left = duration
++	state_changed.emit(state, game.round_number if game != null else 0)
++
++
++## BIDDING -> WAITING_FOR_SUBMISSIONS keeps the same deadline.
++func _set_state_keep_time(new_state: int) -> void:
++	state = new_state
++	state_changed.emit(state, game.round_number)
+diff --git a/Gameplay/BalanceScale/auction_presenter.gd b/Gameplay/BalanceScale/auction_presenter.gd
+new file mode 100644
+index 0000000..f9d3b67
+--- /dev/null
++++ b/Gameplay/BalanceScale/auction_presenter.gd
+@@ -0,0 +1,441 @@
++class_name AuctionPresenter
++extends Node
++## Connects an AuctionMatch to everything the player sees and hears: HUD, bid panel, pots,
++## table bid screens, the wall display, bot characters and sound. It contains no rules.
++##
++## Flow: the human sits (SeatingController) -> bots take the other chairs -> the match starts.
++
++@export var seating: SeatingController
++@export var hud: GameHUD
++@export var seats_root: Node3D
++@export var pots_root: Node3D
++@export var table: Node3D
++@export var round_display: Node3D
++@export var lights_root: Node3D
++@export var config: BalanceScaleConfig
++@export_range(1, 3) var bot_count := 3
++
++const BOT_NAMES: Array[String] = ["MIRA", "JONAS", "ILSE"]
++const SIDES := ["E", "S", "W", "N"]
++
++var auction: AuctionMatch
++var human_id := 1
++
++var _sfx: Sfx
++var _bid_panel: BidPanel
++var _board: MatchBoard
++var _wall: ScreenDisplay
++var _table_screens: Dictionary = {}     # seat index -> ScreenDisplay
++var _avatars: Dictionary = {}           # player id -> BotAvatar
++var _pots: Array[AcidPot] = []
++var _glows: Array[OmniLight3D] = []
++var _seat_of_player: Dictionary = {}    # player id -> seat index
++var _clock := 0.0
++var _last_tick := -1
++
++
++func _ready() -> void:
++	if config == null:
++		config = BalanceScaleConfig.new()
++	_sfx = Sfx.new()
++	add_child(_sfx)
++	_bid_panel = BidPanel.new()
++	add_child(_bid_panel)
++	_bid_panel.bid_chosen.connect(_on_human_bid)
++	_board = MatchBoard.new()
++	add_child(_board)
++
++	if seats_root != null:
++		for seat in seating.seats:
++			var side := seat.name.trim_prefix("Seat_")
++			var pot := pots_root.get_node_or_null("Pot_" + side) as AcidPot
++			_pots.append(pot)
++			_glows.append(lights_root.get_node_or_null("PotGlow_" + side) as OmniLight3D if lights_root else null)
++	_build_screens()
++	if hud != null and hud.inventory_bar != null:
++		hud.inventory_bar.hide()   # item slots are not used in this level
++
++	seating.all_seated.connect(_on_all_seated)
++	if hud != null:
++		hud.modal_opened.connect(func() -> void: _bid_panel.input_enabled = false)
++		hud.modal_closed.connect(func() -> void: _bid_panel.input_enabled = true)
++
++
++func _process(delta: float) -> void:
++	if auction == null:
++		return
++	_clock += delta
++	if _clock >= 0.2:
++		_clock = 0.0
++		_refresh_timer_displays()
++	if auction.state == AuctionMatch.S.BIDDING or auction.state == AuctionMatch.S.WAITING_FOR_SUBMISSIONS:
++		var left := int(ceil(auction.time_left))
++		if left <= 5 and left != _last_tick and left > 0 and not _bid_panel.locked:
++			_last_tick = left
++			_sfx.play("tick")
++
++
++# ------------------------------------------------------------------ start
++
++func _on_all_seated() -> void:
++	var humans := seating.get_players()
++	if humans.is_empty():
++		return
++	var human: Node3D = humans[0]
++	human_id = multiplayer.get_unique_id()
++	var human_seat_idx := seating.seats.find(human.seat)
++
++	var list: Array[Dictionary] = [{"id": human_id, "name": "YOU", "is_bot": false, "seat": human_seat_idx, "personality": ""}]
++	var free: Array[int] = []
++	for i in seating.seats.size():
++		if i != human_seat_idx:
++			free.append(i)
++	var bots := mini(bot_count, free.size())
++	for b in bots:
++		var bot_id := human_id + 1 + b
++		list.append({"id": bot_id, "name": BOT_NAMES[b], "is_bot": true, "seat": free[b],
++			"personality": BotBidder.PERSONALITIES[b % BotBidder.PERSONALITIES.size()]})
++		var avatar := BotAvatar.new()
++		add_child(avatar)
++		avatar.sit_on(seating.seats[free[b]], BOT_NAMES[b])
++		seating.seats[free[b]].take(avatar)
++		_avatars[bot_id] = avatar
++	for p in list:
++		_seat_of_player[p["id"]] = p["seat"]
++
++	# Chairs and pots nobody uses are switched off.
++	for i in _pots.size():
++		var used := false
++		for p in list:
++			if p["seat"] == i:
++				used = true
++		if not used:
++			if _pots[i]: _pots[i].visible = false
++			if _glows[i]: _glows[i].visible = false
++			if i in _table_screens: (_table_screens[i] as ScreenDisplay).show_text("", "", "", Color.DIM_GRAY)
++
++	auction = AuctionMatch.new()
++	add_child(auction)
++	auction.state_changed.connect(_on_state_changed)
++	auction.bid_locked.connect(_on_bid_locked)
++	auction.round_revealed.connect(_on_round_revealed)
++	auction.winner_announced.connect(_on_winner_announced)
++	auction.acid_applied.connect(_on_acid_applied)
++	auction.player_eliminated.connect(_on_player_eliminated)
++	auction.game_finished.connect(_on_game_finished)
++	if not auction.setup(list, config):
++		push_error("AuctionPresenter: could not start the match.")
++		return
++	for i in _pots.size():
++		if _pots[i] and _pots[i].visible:
++			_pots[i].reset()
++			_pots[i].set_danger(0)
++	_refresh_all()
++	auction.start_rounds()
++
++
++# ------------------------------------------------------------------ match events
++
++func _on_state_changed(new_state: int, round_number: int) -> void:
++	_last_tick = -1
++	match new_state:
++		AuctionMatch.S.ROUND_INTRO:
++			_sfx.play("round")
++			_notify("ROUND %d" % round_number, "")
++			_set_all_table_screens("ROUND %d" % round_number, "·", "", Color(0.7, 0.8, 0.9))
++		AuctionMatch.S.PENALTY_ANNOUNCE:
++			_sfx.play("penalty")
++			var pen := auction.game.current_penalty()
++			_notify("PENALTY  -%d" % pen, "EVERY LOSER PAYS %d POINTS" % pen)
++		AuctionMatch.S.BIDDING:
++			_open_bid_panel()
++			for i in _table_screens:
++				if _pot_in_use(i):
++					(_table_screens[i] as ScreenDisplay).show_text("BID", "…", "THINKING", Color(0.7, 0.8, 0.9))
++		AuctionMatch.S.WAITING_FOR_SUBMISSIONS:
++			pass
++		AuctionMatch.S.NEXT_ROUND_PREP:
++			pass
++	_refresh_all()
++
++
++func _on_bid_locked(id: int, auto: bool) -> void:
++	var seat: int = _seat_of_player.get(id, -1)
++	if seat in _table_screens:
++		(_table_screens[seat] as ScreenDisplay).show_text("BID", "LOCKED", "AUTO: 0" if auto else "SECRET", Color(1.0, 0.8, 0.3), Color(0.08, 0.06, 0.02))
++	if id == human_id:
++		if not _bid_panel.locked:
++			_bid_panel.show_locked(0 if auto else _bid_panel.value)
++		_sfx.play("lock")
++	_refresh_all()
++
++
++func _on_round_revealed(result: Dictionary) -> void:
++	_bid_panel.close()
++	_sfx.play("reveal")
++	var bids: Dictionary = result["bids"]
++	var order: Array = bids.keys()
++	order.sort_custom(func(a: int, b: int) -> bool: return int(_seat_of_player.get(a, 0)) < int(_seat_of_player.get(b, 0)))
++	for i in order.size():
++		var id: int = order[i]
++		var seat: int = _seat_of_player.get(id, -1)
++		get_tree().create_timer(0.5 * i).timeout.connect(func() -> void:
++			if seat in _table_screens and is_instance_valid(self):
++				(_table_screens[seat] as ScreenDisplay).show_text("BID", str(bids[id]), _name_of(id), Color(1.0, 0.95, 0.8), Color(0.05, 0.05, 0.06)))
++	_refresh_all()
++
++
++func _on_winner_announced(result: Dictionary) -> void:
++	if result["standoff"]:
++		_sfx.play("standoff")
++		_notify("STANDOFF", "NO WINNER. EVERYONE PAYS %d POINTS" % result["penalty"])
++		for i in _table_screens:
++			if _pot_in_use(i):
++				var id := _player_at_seat(i)
++				if id != -1 and result["bids"].has(id):
++					(_table_screens[i] as ScreenDisplay).show_text("STANDOFF", str(result["bids"][id]), "PAYS %d" % result["penalty"], Color(1.0, 0.6, 0.2), Color(0.1, 0.05, 0.0))
++	else:
++		var wid: int = result["winner_id"]
++		_sfx.play("win")
++		_notify("%s WINS THE ROUND" % _name_of(wid), "WINNING BID %d  ·  PAYS %d" % [result["winning_bid"], result["winning_bid"]])
++		var seat: int = _seat_of_player.get(wid, -1)
++		if seat in _table_screens:
++			(_table_screens[seat] as ScreenDisplay).show_text("WINNER", str(result["winning_bid"]), _name_of(wid), Color(0.5, 1.0, 0.4), Color(0.0, 0.1, 0.02))
++	_refresh_all()
++
++
++func _on_acid_applied(result: Dictionary) -> void:
++	var capacity := config.capacity
++	var any_acid := false
++	for id in result["deltas"]:
++		var d: Dictionary = result["deltas"][id]
++		var seat: int = _seat_of_player.get(id, -1)
++		var acid: int = result["players"][id]["acid"]
++		if seat >= 0 and seat < _pots.size() and _pots[seat] != null:
++			if d["acid"] != 0:
++				any_acid = true
++				_pots[seat].pour_to(minf(float(acid) / float(capacity), 1.175), 2.2)
++			elif d["acid"] == 0 and acid == 0:
++				_pots[seat].set_fill(0.0)
++			_apply_danger(seat, acid)
++		if id == human_id:
++			var pts: int = int(d["points"])
++			if pts < 0:
++				_hud_event({"type": "points_deducted", "amount": -pts, "detail": "STANDOFF" if result["standoff"] else ("YOUR BID" if id == result["winner_id"] else "ROUND PENALTY")})
++			if d["acid"] > 0:
++				_notify("+%d ACID" % d["acid"], "YOUR POT IS AT %d / %d" % [acid, capacity])
++	if any_acid:
++		_sfx.play("acid")
++	_refresh_all()
++
++
++func _apply_danger(seat: int, acid: int) -> void:
++	var level := _danger_level(acid)
++	if _pots[seat] != null:
++		_pots[seat].set_danger(level)
++	if _glows[seat] != null:
++		var colors := [Color(0.6, 1.0, 0.3), Color(0.95, 0.85, 0.2), Color(1.0, 0.5, 0.12), Color(1.0, 0.16, 0.1)]
++		var glow := _glows[seat]
++		var tween := create_tween().set_parallel(true)
++		tween.tween_property(glow, "light_color", colors[mini(level, 3)], 0.8)
++		tween.tween_property(glow, "light_energy", [0.9, 1.3, 1.8, 2.6][mini(level, 3)], 0.8)
++	if level >= 3 and acid > 0:
++		_sfx.play("alarm")
++
++
++func _danger_level(acid: int) -> int:
++	var cap := config.capacity
++	if acid >= cap:
++		return 3
++	var ratio := float(acid) / float(cap)
++	if ratio >= 0.8: return 2
++	if ratio >= 0.6: return 1
++	return 0
++
++
++func _on_player_eliminated(id: int, reason: String) -> void:
++	var seat: int = _seat_of_player.get(id, -1)
++	if seat >= 0 and seat < _pots.size() and _pots[seat] != null:
++		_pots[seat].release()
++	if _avatars.has(id):
++		(_avatars[id] as BotAvatar).eliminate()
++	if seat in _table_screens:
++		(_table_screens[seat] as ScreenDisplay).show_text("OUT", "✕", _reason_text(reason), Color(1.0, 0.3, 0.25), Color(0.1, 0.0, 0.0))
++	_sfx.play("eliminate")
++	if id == human_id:
++		var pts := int(auction.game.points[id]) if auction != null else 0
++		hud.show_elimination({"reason": _reason_text(reason), "points": maxi(pts, 0), "spectate": true})
++		_bid_panel.close()
++	else:
++		_hud_event({"type": "eliminated", "player": _name_of(id), "reason": _reason_text(reason)})
++	_refresh_all()
++
++
++func _on_game_finished(winner_id: int) -> void:
++	_bid_panel.close()
++	_sfx.play("gameover" if winner_id != human_id else "win")
++	seating.end_game()
++	if winner_id == human_id:
++		hud.show_victory({
++			"points": int(auction.game.points[human_id]), "place": 1, "total_players": auction.players.size(),
++			"can_spectate": false,
++			"stats": [
++				{"label": "Rounds", "value": "%02d" % maxi(auction.game.round_number - 1, 0)},
++				{"label": "Acid", "value": str(auction.game.acid[human_id])},
++			],
++		})
++	else:
++		_notify("GAME OVER", "%s SURVIVES THE BALANCE SCALE" % _name_of(winner_id) if winner_id != -1 else "NOBODY SURVIVED")
++	_set_all_table_screens("GAME OVER", _name_of(winner_id) if winner_id != -1 else "-", "SURVIVOR", Color(0.5, 1.0, 0.4))
++	_refresh_all()
++
++
++# ------------------------------------------------------------------ human input
++
++func _open_bid_panel() -> void:
++	var view := auction.private_view(human_id)
++	if view.is_empty() or bool(view["eliminated"]):
++		return
++	_bid_panel.open(int(view["points"]), auction.game.current_penalty(), bool(view["next_loss_is_fatal"]))
++
++
++func _on_human_bid(amount: int) -> void:
++	if auction.submit_bid(human_id, amount):
++		_bid_panel.show_locked(amount)
++
++
++# ------------------------------------------------------------------ views
++
++func _refresh_all() -> void:
++	if auction == null:
++		return
++	var view := auction.public_view()
++	_board.update_view(view, human_id)
++	_push_hud(view)
++	_refresh_timer_displays()
++
++
++func _push_hud(view: Dictionary) -> void:
++	var list: Array = []
++	var priv := auction.private_view(human_id)
++	for p in view["players"]:
++		var entry := {"id": p["id"], "name": p["name"], "alive": p["alive"]}
++		if p["id"] == human_id and not priv.is_empty():
++			entry["points"] = priv["points"]
++		list.append(entry)
++	var timed: bool = view["time_total"] > 0.0
++	hud.apply_state({
++		"local_id": human_id, "round": view["round"], "phase": view["state_label"],
++		"time_left": view["time_left"] if timed else -1.0, "time_total": view["time_total"] if timed else -1.0,
++		"starting_points": config.start_points, "players": list,
++	})
++
++
++func _refresh_timer_displays() -> void:
++	if auction == null:
++		return
++	if _bid_panel.is_open() and not _bid_panel.locked:
++		_bid_panel.set_time(auction.time_left, auction.time_total)
++	elif _bid_panel.is_open():
++		_bid_panel.set_time(auction.time_left, auction.time_total)
++	if _wall != null:
++		var view := auction.public_view()
++		var timer_text := "%d" % int(ceil(view["time_left"])) if view["time_total"] > 0.0 else ""
++		var color := Color(0.85, 0.95, 1.0)
++		if auction.state == AuctionMatch.S.BIDDING and view["time_left"] <= 5.0:
++			color = Color(1.0, 0.3, 0.25)
++		if auction.is_over():
++			_wall.show_text("THE BALANCE SCALE", "GAME OVER", "", Color(0.5, 1.0, 0.4))
++		else:
++			_wall.show_text("ROUND %d   ·   LOSERS PAY %d" % [view["round"], view["penalty"]], view["state_label"], timer_text, color)
++
++
++func _build_screens() -> void:
++	if table != null:
++		# The table's own names (BidScreen_E/S/W/N) do not follow our chair names, so every chair
++		# is matched to the screen that is physically closest to it.
++		var screens: Array[MeshInstance3D] = []
++		for n in table.find_children("BidScreen_*", "MeshInstance3D", true, false):
++			screens.append(n)
++		for i in seating.seats.size():
++			var seat_pos := seating.seats[i].global_position
++			var best: MeshInstance3D = null
++			var best_d := INF
++			for mesh in screens:
++				var c := mesh.global_transform * mesh.get_aabb().get_center()
++				var d := Vector2(c.x - seat_pos.x, c.z - seat_pos.z).length()
++				if d < best_d:
++					best_d = d
++					best = mesh
++			if best != null:
++				var display := ScreenDisplay.new()
++				add_child(display)
++				# UV: U is 0.37 m (towards the player), V is 0.6 m (across): turn the content a quarter.
++				display.attach(best, Vector2i(256, 416), -1)
++				display.show_text("BID", "", "", Color(0.4, 0.5, 0.6))
++				_table_screens[i] = display
++	if round_display != null:
++		var screen := round_display.find_child("Screen", true, false) as MeshInstance3D
++		if screen != null:
++			_wall = ScreenDisplay.new()
++			add_child(_wall)
++			_wall.attach(screen, Vector2i(1200, 440))
++			_wall.show_text("THE BALANCE SCALE", "TAKE A SEAT", "", Color(0.85, 0.95, 1.0))
++			# One copy of the display on every wall so each seat can read it; all share one texture.
++			# Added after the level has finished setting up its children.
++			_add_wall_copies.call_deferred(screen)
++
++
++func _add_wall_copies(screen: MeshInstance3D) -> void:
++	var parent := round_display.get_parent()
++	for entry in [[Vector3(4.8, 0, 0), -90.0], [Vector3(-4.8, 0, 0), 90.0], [Vector3(0, 0, 4.8), 180.0]]:
++		var copy := round_display.duplicate() as Node3D
++		parent.add_child(copy)
++		copy.position = Vector3(entry[0].x, round_display.position.y, entry[0].z)
++		copy.rotation_degrees = Vector3(0.0, entry[1], 0.0)
++		var m := copy.find_child("Screen", true, false) as MeshInstance3D
++		if m != null:
++			m.material_override = screen.material_override
++
++
++# ------------------------------------------------------------------ helpers
++
++func _set_all_table_screens(top: String, big: String, bottom: String, color: Color) -> void:
++	for i in _table_screens:
++		if _pot_in_use(i):
++			(_table_screens[i] as ScreenDisplay).show_text(top, big, bottom, color)
++
++
++func _pot_in_use(seat: int) -> bool:
++	return _seat_of_player.values().has(seat)
++
++
++func _player_at_seat(seat: int) -> int:
++	for id in _seat_of_player:
++		if _seat_of_player[id] == seat:
++			return id
++	return -1
++
++
++func _name_of(id: int) -> String:
++	if auction == null:
++		return "?"
++	var info := auction.player_info(id)
++	return "YOU" if id == human_id else str(info.get("name", "?"))
++
++
++func _reason_text(reason: String) -> String:
++	match reason:
++		BalanceScaleGame.REASON_POINTS: return "YOUR POINTS FELL BELOW ZERO"
++		BalanceScaleGame.REASON_ACID: return "YOUR ACID POT OVERFLOWED"
++		BalanceScaleGame.REASON_DISCONNECTED: return "DISCONNECTED"
++	return reason.to_upper()
++
++
++func _notify(title: String, detail: String) -> void:
++	_hud_event({"type": "info", "title": title, "detail": detail})
++
++
++func _hud_event(event: Dictionary) -> void:
++	if hud != null:
++		hud.notify(event)
+diff --git a/Gameplay/BalanceScale/balance_scale_config.gd b/Gameplay/BalanceScale/balance_scale_config.gd
+new file mode 100644
+index 0000000..3bafb0b
+--- /dev/null
++++ b/Gameplay/BalanceScale/balance_scale_config.gd
+@@ -0,0 +1,27 @@
++class_name BalanceScaleConfig
++extends Resource
++## Every number that shapes a Balance Scale match, in one place so it can be tuned
++## after playtests (see docs/balance_scale_design.md, decision D4).
++
++@export var start_points := 100
++@export var capacity := 100
++## Points every loser pays in round 1; grows by `penalty_step` each round.
++@export var penalty_start := 10
++@export var penalty_step := 3
++## Acid removed from every living pot at the end of each round (0 = acid never drains).
++@export var acid_drain_per_round := 0
++@export var bid_seconds := 20.0
++
++@export_group("Pacing (seconds)")
++@export var intro_seconds := 2.5
++@export var penalty_seconds := 2.5
++@export var reveal_seconds := 4.0
++@export var winner_seconds := 3.0
++@export var acid_seconds := 3.5
++@export var elimination_seconds := 3.0
++@export var next_round_seconds := 1.5
++
++
++## Penalty paid by losers in round `round_number` (round 1 is the first round).
++func penalty_for_round(round_number: int) -> int:
++	return penalty_start + penalty_step * maxi(round_number - 1, 0)
+diff --git a/Gameplay/BalanceScale/balance_scale_game.gd b/Gameplay/BalanceScale/balance_scale_game.gd
+index 14035cc..fff1b4e 100644
+--- a/Gameplay/BalanceScale/balance_scale_game.gd
++++ b/Gameplay/BalanceScale/balance_scale_game.gd
+@@ -1,7 +1,16 @@
+ class_name BalanceScaleGame
+ extends RefCounted
+-## Host-authoritative rules for The Auction / Balance Scale.
++## Host-authoritative rules for The Auction / Balance Scale. No scenes, no timers, no UI.
+ ## The host creates one instance, calls setup(), then resolves each complete bid set.
++##
++## Rules (docs/balance_scale_design.md, section 3):
++##   * Highest UNIQUE bid wins and pays that bid; the winner takes no penalty and no acid.
++##   * Every other living player loses `penalty` points and gains acid = winning bid - own bid.
++##   * A tie for the highest bid is a STANDOFF: nobody wins, nobody pays a bid, EVERY living
++##     player loses `penalty` points, no acid. If that would kill everyone, one player survives
++##     (most points, then least acid, then a coin flip).
++##   * Eliminated when points < 0 or acid > capacity. Exactly 0 points / exactly full are alive.
++##   * Acid is public, points are private. Bids are revealed in the round result.
+ 
+ signal round_resolved(result: Dictionary)
+ signal player_eliminated(player_id: int, reason: String)
+@@ -9,19 +18,34 @@ signal game_ended(winner_id: int)
+ 
+ enum State { NOT_STARTED, RUNNING, ENDED }
+ 
++const REASON_POINTS := "negative_points"
++const REASON_ACID := "acid_overflow"
++const REASON_DISCONNECTED := "disconnected"
++
+ var state: State = State.NOT_STARTED
+ var round_number: int = 1
+-var points: Dictionary = {}       # player_id -> int
+-var acid: Dictionary = {}         # player_id -> int
+-var eliminated: Dictionary = {}  # player_id -> bool
++var points: Dictionary = {}       # player_id -> int (private)
++var acid: Dictionary = {}         # player_id -> int (public)
++var eliminated: Dictionary = {}   # player_id -> bool
+ var pot_capacity: int = 0
+ var winner_id: int = -1
++var config: BalanceScaleConfig
++## Used only for the last-stand coin flip. Call rng.seed = n in tests for repeatable results.
++var rng := RandomNumberGenerator.new()
+ 
+ 
++## Simple setup: default penalty schedule, custom points / capacity.
+ func setup(player_ids: Array[int], starting_points: int, max_pot_capacity: int) -> bool:
+-	if state != State.NOT_STARTED or player_ids.size() < 2:
++	var cfg := BalanceScaleConfig.new()
++	cfg.start_points = starting_points
++	cfg.capacity = max_pot_capacity
++	return setup_with_config(player_ids, cfg)
++
++
++func setup_with_config(player_ids: Array[int], cfg: BalanceScaleConfig) -> bool:
++	if state != State.NOT_STARTED or player_ids.size() < 2 or cfg == null:
+ 		return false
+-	if starting_points < 0 or max_pot_capacity <= 0:
++	if cfg.start_points < 0 or cfg.capacity <= 0:
+ 		return false
+ 
+ 	var unique_ids: Dictionary = {}
+@@ -30,30 +54,35 @@ func setup(player_ids: Array[int], starting_points: int, max_pot_capacity: int)
+ 			return false
+ 		unique_ids[player_id] = true
+ 
+-	pot_capacity = max_pot_capacity
++	config = cfg
++	pot_capacity = cfg.capacity
+ 	for player_id in player_ids:
+-		points[player_id] = starting_points
++		points[player_id] = cfg.start_points
+ 		acid[player_id] = 0
+ 		eliminated[player_id] = false
+ 
++	rng.randomize()
+ 	state = State.RUNNING
+ 	return true
+ 
+ 
+-## Resolve only when every living player has submitted one valid bid.
+-## A tie for the highest bid advances the round without changing any player state.
+-func resolve_round(bids: Dictionary, round_penalty: int) -> Dictionary:
++## Penalty for the round that is about to be resolved.
++func current_penalty() -> int:
++	return config.penalty_for_round(round_number) if config != null else 0
++
++
++## Resolve only when every living player has submitted one valid bid. Bids from players who
++## are not alive are ignored. round_penalty < 0 means "use the configured schedule".
++func resolve_round(bids: Dictionary, round_penalty: int = -1) -> Dictionary:
+ 	if state != State.RUNNING:
+ 		return _error("The game is not accepting bids.")
+-	if round_penalty < 0:
+-		return _error("The round penalty cannot be negative.")
+ 
++	var penalty := current_penalty() if round_penalty < 0 else round_penalty
+ 	var active_ids := active_player_ids()
+ 	if active_ids.size() < 2:
+ 		return _error("At least two active players are required.")
+-	if bids.size() != active_ids.size():
+-		return _error("A bid is required from every active player.")
+ 
++	var clean: Dictionary = {}
+ 	for player_id in active_ids:
+ 		if not bids.has(player_id):
+ 			return _error("A bid is missing for player %s." % player_id)
+@@ -62,11 +91,12 @@ func resolve_round(bids: Dictionary, round_penalty: int) -> Dictionary:
+ 			return _error("Bids must be whole numbers.")
+ 		if int(bid_value) < 0 or int(bid_value) > int(points[player_id]):
+ 			return _error("Player %s submitted an invalid bid." % player_id)
++		clean[player_id] = int(bid_value)
+ 
+ 	var highest_bid := -1
+ 	var highest_ids: Array[int] = []
+ 	for player_id in active_ids:
+-		var bid := int(bids[player_id])
++		var bid: int = clean[player_id]
+ 		if bid > highest_bid:
+ 			highest_bid = bid
+ 			highest_ids.clear()
+@@ -74,54 +104,79 @@ func resolve_round(bids: Dictionary, round_penalty: int) -> Dictionary:
+ 		elif bid == highest_bid:
+ 			highest_ids.append(player_id)
+ 
+-	round_number += 1
+-
+-	if highest_ids.size() != 1:
+-		var tie_result := {
+-			"ok": true,
+-			"tie": true,
+-			"winner_id": -1,
+-			"round_penalty": round_penalty,
+-			"eliminated": [],
+-			"players": _public_player_snapshots()
+-		}
+-		round_resolved.emit(tie_result)
+-		return tie_result
++	var resolved_round := round_number
++	var points_before := points.duplicate()
++	var acid_before := acid.duplicate()
++	var standoff := highest_ids.size() > 1
++	var winner := -1
++	var dying: Array[Dictionary] = []   # [{id, reason}]
++	var last_stand := -1
++
++	if standoff:
++		for player_id in active_ids:
++			points[player_id] = int(points[player_id]) - penalty
++		var below_zero: Array[int] = []
++		for player_id in active_ids:
++			if int(points[player_id]) < 0:
++				below_zero.append(player_id)
++		if below_zero.size() == active_ids.size():
++			# Last-stand rule: somebody has to survive a standoff.
++			last_stand = _pick_last_stand(active_ids)
++			points[last_stand] = 0
++			below_zero.erase(last_stand)
++		for player_id in below_zero:
++			dying.append({"id": player_id, "reason": REASON_POINTS})
++	else:
++		winner = highest_ids[0]
++		points[winner] = int(points[winner]) - highest_bid
++		for player_id in active_ids:
++			if player_id == winner:
++				continue
++			points[player_id] = int(points[player_id]) - penalty
++			acid[player_id] = int(acid[player_id]) + (highest_bid - int(clean[player_id]))
++			if int(points[player_id]) < 0:
++				dying.append({"id": player_id, "reason": REASON_POINTS})
++			elif int(acid[player_id]) > pot_capacity:
++				dying.append({"id": player_id, "reason": REASON_ACID})
++
++	var eliminated_ids: Array[int] = []
++	for entry in dying:
++		eliminated[entry["id"]] = true
++		eliminated_ids.append(entry["id"])
++
++	if config.acid_drain_per_round > 0:
++		for player_id in active_ids:
++			if not bool(eliminated[player_id]):
++				acid[player_id] = maxi(0, int(acid[player_id]) - config.acid_drain_per_round)
+ 
+-	var winner: int = highest_ids[0]
+-	points[winner] = int(points[winner]) - highest_bid
+-	var eliminated_this_round: Array[int] = []
++	round_number += 1
+ 
++	var deltas: Dictionary = {}
+ 	for player_id in active_ids:
+-		if player_id == winner:
+-			continue
+-
+-		var player_bid := int(bids[player_id])
+-		points[player_id] = int(points[player_id]) - round_penalty
+-		acid[player_id] = int(acid[player_id]) + (highest_bid - player_bid)
+-
+-		var reason := ""
+-		if int(points[player_id]) < 0:
+-			# Falling below zero causes the pot to release, regardless of its prior fill.
+-			acid[player_id] = pot_capacity
+-			reason = "negative_points"
+-		elif int(acid[player_id]) >= pot_capacity:
+-			acid[player_id] = pot_capacity
+-			reason = "pot_full"
++		deltas[player_id] = {
++			"points": int(points[player_id]) - int(points_before[player_id]),
++			"acid": int(acid[player_id]) - int(acid_before[player_id]),
++		}
+ 
+-		if not reason.is_empty():
+-			eliminated[player_id] = true
+-			eliminated_this_round.append(player_id)
+-			player_eliminated.emit(player_id, reason)
++	for entry in dying:
++		player_eliminated.emit(entry["id"], entry["reason"])
+ 
+ 	var remaining := active_player_ids()
+ 	var round_result := {
+ 		"ok": true,
+-		"tie": false,
++		"round": resolved_round,
++		"standoff": standoff,
++		"tie": standoff,                    # kept for older callers
+ 		"winner_id": winner,
+-		"round_penalty": round_penalty,
+-		"eliminated": eliminated_this_round,
+-		"players": _public_player_snapshots()
++		"winning_bid": highest_bid,
++		"round_penalty": penalty,
++		"penalty": penalty,
++		"bids": clean,                      # revealed to everybody
++		"deltas": deltas,                   # points never appear as totals, only changes
++		"eliminated": eliminated_ids,
++		"eliminations": dying,
++		"last_stand_id": last_stand,
++		"players": _public_player_snapshots(),
+ 	}
+ 
+ 	if remaining.size() <= 1:
+@@ -138,6 +193,33 @@ func resolve_round(bids: Dictionary, round_penalty: int) -> Dictionary:
+ 	return round_result
+ 
+ 
++## A player left the match: they are eliminated at once and take no part in the round.
++## The caller must also drop any bid that player had submitted.
++func forfeit(player_id: int, reason: String = REASON_DISCONNECTED) -> Dictionary:
++	if state != State.RUNNING:
++		return _error("The game is not running.")
++	if not points.has(player_id) or bool(eliminated[player_id]):
++		return _error("Player %s is not an active player." % player_id)
++
++	eliminated[player_id] = true
++	player_eliminated.emit(player_id, reason)
++
++	var remaining := active_player_ids()
++	var result := {
++		"ok": true,
++		"player_id": player_id,
++		"reason": reason,
++		"game_over": remaining.size() <= 1,
++		"game_winner_id": remaining[0] if remaining.size() == 1 else -1,
++		"players": _public_player_snapshots(),
++	}
++	if remaining.size() <= 1:
++		state = State.ENDED
++		winner_id = int(result["game_winner_id"])
++		game_ended.emit(winner_id)
++	return result
++
++
+ func active_player_ids() -> Array[int]:
+ 	var ids: Array[int] = []
+ 	for player_id in points:
+@@ -179,5 +261,24 @@ func private_snapshot(player_id: int) -> Dictionary:
+ 	}
+ 
+ 
++## Most points, then least acid, then a coin flip.
++func _pick_last_stand(candidates: Array[int]) -> int:
++	var best: Array[int] = []
++	for player_id in candidates:
++		if best.is_empty():
++			best.append(player_id)
++			continue
++		var cur := best[0]
++		var more_points := int(points[player_id]) > int(points[cur])
++		var same_points := int(points[player_id]) == int(points[cur])
++		var less_acid := int(acid[player_id]) < int(acid[cur])
++		var same_acid := int(acid[player_id]) == int(acid[cur])
++		if more_points or (same_points and less_acid):
++			best = [player_id]
++		elif same_points and same_acid:
++			best.append(player_id)
++	return best[rng.randi_range(0, best.size() - 1)]
++
++
+ func _error(message: String) -> Dictionary:
+ 	return {"ok": false, "error": message}
+diff --git a/Gameplay/BalanceScale/bid_panel.gd b/Gameplay/BalanceScale/bid_panel.gd
+new file mode 100644
+index 0000000..c8e013f
+--- /dev/null
++++ b/Gameplay/BalanceScale/bid_panel.gd
+@@ -0,0 +1,194 @@
++class_name BidPanel
++extends CanvasLayer
++## The secret bid entry. Keyboard driven so the mouse can stay captured for looking around:
++##   digits type the amount, Backspace deletes, Up/Down = +-10, Left/Right = +-1,
++##   M = all your points, Z = 0, Enter = lock in. The buttons work if the mouse is free.
++## Pure presentation: it only reports the locked-in amount (bid_chosen).
++
++signal bid_chosen(amount: int)
++
++var input_enabled := true
++
++var value := 0
++var max_value := 0
++var locked := false
++var _open := false
++
++var _root: PanelContainer
++var _value_label: Label
++var _info_label: Label
++var _warn_label: Label
++var _timer_bar: ProgressBar
++var _timer_label: Label
++var _hint_label: Label
++var _lock_button: Button
++
++
++func _ready() -> void:
++	layer = 8
++	_root = PanelContainer.new()
++	_root.visible = false
++	_root.mouse_filter = Control.MOUSE_FILTER_PASS
++	_root.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
++	_root.anchor_left = 0.5
++	_root.anchor_right = 0.5
++	_root.offset_left = -270.0
++	_root.offset_right = 270.0
++	_root.offset_top = -300.0
++	_root.offset_bottom = -60.0
++	_root.grow_vertical = Control.GROW_DIRECTION_BEGIN
++	var style := StyleBoxFlat.new()
++	style.bg_color = Color(0.03, 0.04, 0.05, 0.92)
++	style.border_color = Color(1.0, 0.72, 0.2)
++	style.set_border_width_all(2)
++	style.set_corner_radius_all(4)
++	style.set_content_margin_all(14)
++	_root.add_theme_stylebox_override("panel", style)
++	add_child(_root)
++
++	var box := VBoxContainer.new()
++	box.add_theme_constant_override("separation", 6)
++	_root.add_child(box)
++
++	var head := HBoxContainer.new()
++	box.add_child(head)
++	var title := Label.new()
++	title.text = "PLACE YOUR SECRET BID"
++	title.add_theme_color_override("font_color", Color(1.0, 0.72, 0.2))
++	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
++	head.add_child(title)
++	_timer_label = Label.new()
++	head.add_child(_timer_label)
++
++	_timer_bar = ProgressBar.new()
++	_timer_bar.show_percentage = false
++	_timer_bar.custom_minimum_size = Vector2(0, 8)
++	box.add_child(_timer_bar)
++
++	_value_label = Label.new()
++	_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
++	_value_label.add_theme_font_size_override("font_size", 54)
++	box.add_child(_value_label)
++
++	_info_label = Label.new()
++	_info_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
++	box.add_child(_info_label)
++
++	_warn_label = Label.new()
++	_warn_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
++	_warn_label.add_theme_color_override("font_color", Color(1.0, 0.3, 0.25))
++	box.add_child(_warn_label)
++
++	var buttons := HBoxContainer.new()
++	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
++	box.add_child(buttons)
++	for entry in [["0", 0.0], ["25%", 0.25], ["50%", 0.5], ["MAX", 1.0]]:
++		var b := Button.new()
++		b.text = entry[0]
++		b.focus_mode = Control.FOCUS_NONE
++		b.pressed.connect(_set_fraction.bind(float(entry[1])))
++		buttons.add_child(b)
++	_lock_button = Button.new()
++	_lock_button.text = "LOCK IN  [ENTER]"
++	_lock_button.focus_mode = Control.FOCUS_NONE
++	_lock_button.pressed.connect(_lock_in)
++	buttons.add_child(_lock_button)
++
++	_hint_label = Label.new()
++	_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
++	_hint_label.add_theme_font_size_override("font_size", 12)
++	_hint_label.modulate = Color(1, 1, 1, 0.6)
++	_hint_label.text = "type digits  ·  ↑↓ ±10  ·  ←→ ±1  ·  M = max  ·  Z = 0  ·  nobody sees your bid until the reveal"
++	box.add_child(_hint_label)
++
++
++func open(points: int, penalty: int, fatal_next_loss: bool) -> void:
++	max_value = points
++	value = 0
++	locked = false
++	_open = true
++	_root.visible = true
++	_lock_button.disabled = false
++	_info_label.text = "YOUR POINTS  %d      ROUND PENALTY  -%d" % [points, penalty]
++	_warn_label.text = "NEXT LOSS IS FATAL: you cannot pay the penalty" if fatal_next_loss else ""
++	_refresh()
++
++
++func close() -> void:
++	_open = false
++	_root.visible = false
++
++
++func show_locked(amount: int) -> void:
++	locked = true
++	value = amount
++	_lock_button.disabled = true
++	_hint_label.text = "BID LOCKED — waiting for the other players"
++	_refresh()
++
++
++func set_time(left: float, total: float) -> void:
++	_timer_bar.max_value = maxf(total, 1.0)
++	_timer_bar.value = left
++	_timer_label.text = "%d s" % int(ceil(left))
++	_timer_label.add_theme_color_override("font_color", Color(1.0, 0.3, 0.25) if left <= 5.0 else Color.WHITE)
++	if not locked and left <= 5.0 and _open:
++		_warn_label.text = "NOTHING SUBMITTED = A BID OF 0"
++
++
++func is_open() -> bool:
++	return _open
++
++
++func _input(event: InputEvent) -> void:
++	if not _open or locked or not input_enabled:
++		return
++	if not (event is InputEventKey) or not event.pressed:
++		return
++	var key := event as InputEventKey
++	var handled := true
++	match key.keycode:
++		KEY_0, KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, \
++		KEY_KP_0, KEY_KP_1, KEY_KP_2, KEY_KP_3, KEY_KP_4, KEY_KP_5, KEY_KP_6, KEY_KP_7, KEY_KP_8, KEY_KP_9:
++			if not key.echo:
++				var digit := (key.keycode - KEY_0) if key.keycode <= KEY_9 else (key.keycode - KEY_KP_0)
++				value = mini(value * 10 + digit, max_value)
++		KEY_BACKSPACE:
++			value = value / 10
++		KEY_UP:
++			value = mini(value + 10, max_value)
++		KEY_DOWN:
++			value = maxi(value - 10, 0)
++		KEY_RIGHT:
++			value = mini(value + 1, max_value)
++		KEY_LEFT:
++			value = maxi(value - 1, 0)
++		KEY_M:
++			value = max_value
++		KEY_Z:
++			value = 0
++		KEY_ENTER, KEY_KP_ENTER:
++			if not key.echo:
++				_lock_in()
++		_:
++			handled = false
++	if handled:
++		get_viewport().set_input_as_handled()
++		_refresh()
++
++
++func _set_fraction(fraction: float) -> void:
++	if locked:
++		return
++	value = int(round(max_value * fraction))
++	_refresh()
++
++
++func _lock_in() -> void:
++	if locked or not _open:
++		return
++	bid_chosen.emit(value)
++
++
++func _refresh() -> void:
++	_value_label.text = str(value)
+diff --git a/Gameplay/BalanceScale/bot_avatar.gd b/Gameplay/BalanceScale/bot_avatar.gd
+new file mode 100644
+index 0000000..fab1e73
+--- /dev/null
++++ b/Gameplay/BalanceScale/bot_avatar.gd
+@@ -0,0 +1,57 @@
++class_name BotAvatar
++extends CharacterBody3D
++## A seated stand-in for another player: the same character model and animator as the real
++## player, frozen in the sitting pose. Used for bots until remote players are spawned.
++
++const CHARACTER := "res://assets/common/characters/character_base.glb"
++const ANIMATOR := "res://Player/character_animator.gd"
++
++## The animator reads this to blend into the sitting pose.
++var seated := true
++var display_name := "BOT"
++
++var _model: Node3D
++
++
++func sit_on(seat: AuctionSeat, player_name: String) -> void:
++	display_name = player_name
++	_model = (load(CHARACTER) as PackedScene).instantiate() as Node3D
++	_model.position = Vector3(0.0, -0.88, 0.0)
++	_model.rotation.y = PI
++	add_child(_model)
++	var animator := Node.new()
++	animator.set_script(load(ANIMATOR))
++	animator.set("body", self)
++	add_child(animator)
++
++	var tag := Label3D.new()
++	tag.text = player_name
++	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
++	tag.no_depth_test = true
++	tag.fixed_size = true
++	tag.pixel_size = 0.0009
++	tag.font_size = 28
++	tag.outline_size = 8
++	tag.position = Vector3(0.0, 0.95, 0.0)
++	add_child(tag)
++
++	var forward := seat.get_forward()
++	rotation.y = atan2(-forward.x, -forward.z)
++	var sit := seat.get_sit_position()
++	global_position = Vector3(sit.x, sit.y - _hips_above_origin() + 0.02, sit.z)
++
++
++func eliminate() -> void:
++	var tween := create_tween()
++	tween.tween_property(self, "scale", Vector3(1.0, 0.02, 1.0), 0.8).set_trans(Tween.TRANS_QUAD)
++	tween.tween_callback(hide)
++
++
++func _hips_above_origin() -> float:
++	var skeletons := find_children("*", "Skeleton3D", true, false)
++	if skeletons.size() > 0:
++		var sk := skeletons[0] as Skeleton3D
++		var hips := sk.find_bone("Hips")
++		if hips != -1:
++			return (sk.global_transform * sk.get_bone_global_rest(hips)).origin.y - global_position.y
++	return 0.05
+diff --git a/Gameplay/BalanceScale/bot_bidder.gd b/Gameplay/BalanceScale/bot_bidder.gd
+new file mode 100644
+index 0000000..9f31eeb
+--- /dev/null
++++ b/Gameplay/BalanceScale/bot_bidder.gd
+@@ -0,0 +1,27 @@
++class_name BotBidder
++extends RefCounted
++## Chooses a bot's bid. Bots only know what a human would: their own points, their own acid,
++## the capacity and the round penalty. They never see other players' bids or points.
++
++const PERSONALITIES: Array[String] = ["cautious", "gambler", "adaptive", "aggressive"]
++
++
++static func choose_bid(personality: String, points: int, acid: int, capacity: int, penalty: int, rng: RandomNumberGenerator) -> int:
++	if points <= 0:
++		return 0
++	var danger := float(acid) / float(maxi(capacity, 1))
++	var broke := points < int(1.5 * penalty)
++	var bid := 0
++	match personality:
++		"cautious":
++			bid = int(points * rng.randf_range(0.05, 0.3))
++		"gambler":
++			bid = rng.randi_range(0, points)
++		"aggressive":
++			bid = int(points * rng.randf_range(0.35, 0.8))
++		_:  # adaptive
++			var high := 0.55 if (danger > 0.55 or broke) else 0.25
++			bid = int(points * rng.randf_range(0.05, high))
++			if danger > 0.55:
++				bid += penalty
++	return clampi(bid, 0, points)
+diff --git a/Gameplay/BalanceScale/match_board.gd b/Gameplay/BalanceScale/match_board.gd
+new file mode 100644
+index 0000000..215b4c4
+--- /dev/null
++++ b/Gameplay/BalanceScale/match_board.gd
+@@ -0,0 +1,75 @@
++class_name MatchBoard
++extends CanvasLayer
++## Top-left overview of every pot: name, acid level (public) and status. Never shows points.
++
++var _rows: Dictionary = {}     # player id -> {name, bar, status}
++var _box: VBoxContainer
++var _panel: PanelContainer
++
++
++func _ready() -> void:
++	layer = 7
++	_panel = PanelContainer.new()
++	_panel.visible = false
++	_panel.position = Vector2(20, 120)
++	var style := StyleBoxFlat.new()
++	style.bg_color = Color(0.03, 0.04, 0.05, 0.8)
++	style.border_color = Color(0.45, 0.8, 0.25, 0.8)
++	style.set_border_width_all(1)
++	style.set_content_margin_all(10)
++	_panel.add_theme_stylebox_override("panel", style)
++	add_child(_panel)
++	_box = VBoxContainer.new()
++	_box.add_theme_constant_override("separation", 6)
++	_panel.add_child(_box)
++	var title := Label.new()
++	title.text = "ACID POTS"
++	title.add_theme_font_size_override("font_size", 13)
++	title.modulate = Color(0.7, 0.95, 0.35)
++	_box.add_child(title)
++
++
++func update_view(view: Dictionary, local_id: int) -> void:
++	_panel.visible = true
++	var capacity: int = view["capacity"]
++	for p in view["players"]:
++		var id: int = p["id"]
++		if not _rows.has(id):
++			var row := VBoxContainer.new()
++			var line := HBoxContainer.new()
++			var name_label := Label.new()
++			name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
++			var status := Label.new()
++			line.add_child(name_label)
++			line.add_child(status)
++			var bar := ProgressBar.new()
++			bar.show_percentage = false
++			bar.custom_minimum_size = Vector2(210, 10)
++			row.add_child(line)
++			row.add_child(bar)
++			_box.add_child(row)
++			_rows[id] = {"row": row, "name": name_label, "bar": bar, "status": status}
++		var r: Dictionary = _rows[id]
++		(r["name"] as Label).text = ("%s (YOU)" % p["name"]) if id == local_id else str(p["name"])
++		var bar_node := r["bar"] as ProgressBar
++		bar_node.max_value = capacity
++		bar_node.value = mini(p["acid"], capacity)
++		var ratio := float(p["acid"]) / float(maxi(capacity, 1))
++		var color := Color(0.72, 0.95, 0.22)
++		if p["acid"] > capacity: color = Color(0.5, 0.5, 0.5)
++		elif ratio >= 1.0: color = Color(1.0, 0.18, 0.1)
++		elif ratio >= 0.8: color = Color(1.0, 0.5, 0.12)
++		elif ratio >= 0.6: color = Color(0.95, 0.85, 0.2)
++		bar_node.modulate = color
++		var status_label := r["status"] as Label
++		if not p["alive"]:
++			status_label.text = "OUT"
++			status_label.modulate = Color(1.0, 0.3, 0.25)
++			(r["name"] as Label).modulate = Color(1, 1, 1, 0.4)
++		elif ratio >= 1.0:
++			status_label.text = "CRITICAL  %d/%d" % [p["acid"], capacity]
++			status_label.modulate = Color(1.0, 0.3, 0.25)
++		else:
++			var tag := "✓ LOCKED" if p["locked"] else ""
++			status_label.text = ("%d/%d  %s" % [p["acid"], capacity, tag]).strip_edges()
++			status_label.modulate = Color.WHITE
+diff --git a/Gameplay/BalanceScale/screen_display.gd b/Gameplay/BalanceScale/screen_display.gd
+new file mode 100644
+index 0000000..d8cbb6a
+--- /dev/null
++++ b/Gameplay/BalanceScale/screen_display.gd
+@@ -0,0 +1,72 @@
++class_name ScreenDisplay
++extends Node
++## Turns a quad in the level (a table bid screen, the wall display) into a small screen that
++## shows up to three lines of text. It renders a SubViewport and uses it as the quad's texture.
++
++var viewport: SubViewport
++var _top: Label
++var _big: Label
++var _bottom: Label
++var _bg: ColorRect
++
++
++## `quarter_turns`: rotate the content by 90 degrees steps (clockwise, negative = anticlockwise),
++## for quads whose UVs run sideways. `size` is the texture size (the quad's UV rectangle);
++## the text is laid out in a rotated rectangle so it reads upright on the quad.
++func attach(mesh: MeshInstance3D, size: Vector2i, quarter_turns: int = 0) -> void:
++	viewport = SubViewport.new()
++	viewport.size = size
++	viewport.disable_3d = true
++	viewport.transparent_bg = false
++	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
++	add_child(viewport)
++
++	_bg = ColorRect.new()
++	_bg.color = Color(0.02, 0.03, 0.04)
++	_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
++	viewport.add_child(_bg)
++
++	# The content is laid out as a normal landscape page and then turned.
++	var turned := absi(quarter_turns) % 2 == 1
++	var content_size := Vector2(size.y, size.x) if turned else Vector2(size)
++	var content := Control.new()
++	content.size = content_size
++	content.pivot_offset = content_size * 0.5
++	content.rotation = quarter_turns * PI * 0.5
++	content.position = (Vector2(size) - content_size) * 0.5
++	viewport.add_child(content)
++
++	var box := VBoxContainer.new()
++	box.set_anchors_preset(Control.PRESET_FULL_RECT)
++	box.alignment = BoxContainer.ALIGNMENT_CENTER
++	content.add_child(box)
++	var h := content_size.y
++	_top = _label(box, int(h * 0.16))
++	_big = _label(box, int(h * 0.46))
++	_bottom = _label(box, int(h * 0.16))
++
++	var mat := StandardMaterial3D.new()
++	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
++	mat.albedo_texture = viewport.get_texture()
++	mesh.material_override = mat
++
++
++func show_text(top: String, big: String, bottom: String, color: Color = Color(0.9, 0.95, 1.0), background: Color = Color(0.02, 0.03, 0.04)) -> void:
++	_top.text = top
++	_big.text = big
++	_bottom.text = bottom
++	_big.add_theme_color_override("font_color", color)
++	_top.add_theme_color_override("font_color", color.darkened(0.25))
++	_bottom.add_theme_color_override("font_color", color.darkened(0.25))
++	_bg.color = background
++
++
++func _label(parent: Control, font_size: int) -> Label:
++	var l := Label.new()
++	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
++	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
++	l.add_theme_font_size_override("font_size", font_size)
++	l.size_flags_vertical = Control.SIZE_EXPAND_FILL
++	l.autowrap_mode = TextServer.AUTOWRAP_OFF
++	parent.add_child(l)
++	return l
+diff --git a/Gameplay/BalanceScale/sfx.gd b/Gameplay/BalanceScale/sfx.gd
+new file mode 100644
+index 0000000..4bc253a
+--- /dev/null
++++ b/Gameplay/BalanceScale/sfx.gd
+@@ -0,0 +1,90 @@
++class_name Sfx
++extends Node
++## Tiny synthesised sound effects, so the level has audio feedback without any audio files.
++## Replace with real samples later by changing _stream().
++
++const RATE := 22050
++const POOL := 6
++
++var _players: Array[AudioStreamPlayer] = []
++var _cache: Dictionary = {}
++var volume_db := -8.0
++
++
++func _ready() -> void:
++	for i in POOL:
++		var p := AudioStreamPlayer.new()
++		p.volume_db = volume_db
++		add_child(p)
++		_players.append(p)
++
++
++func play(effect: String) -> void:
++	var stream := _stream(effect)
++	if stream == null or _players.is_empty():
++		return
++	for p in _players:
++		if not p.playing:
++			p.stream = stream
++			p.play()
++			return
++	_players[0].stream = stream
++	_players[0].play()
++
++
++func _stream(effect: String) -> AudioStreamWAV:
++	if _cache.has(effect):
++		return _cache[effect]
++	var notes: Array = []
++	match effect:
++		"lock":     notes = [[880.0, 0.06, 0.5, "sine", 1.0], [1320.0, 0.10, 0.5, "sine", 1.0]]
++		"tick":     notes = [[1100.0, 0.04, 0.4, "square", 1.0]]
++		"round":    notes = [[440.0, 0.12, 0.5, "sine", 1.0], [660.0, 0.18, 0.5, "sine", 1.0]]
++		"penalty":  notes = [[330.0, 0.15, 0.5, "square", 0.9], [247.0, 0.25, 0.5, "square", 0.9]]
++		"reveal":   notes = [[196.0, 0.45, 0.6, "sine", 1.0], [294.0, 0.45, 0.4, "sine", 1.0]]
++		"win":      notes = [[523.0, 0.10, 0.5, "sine", 1.0], [659.0, 0.10, 0.5, "sine", 1.0], [784.0, 0.10, 0.5, "sine", 1.0], [1046.0, 0.30, 0.5, "sine", 1.0]]
++		"standoff": notes = [[300.0, 0.18, 0.5, "square", 1.0], [300.0, 0.18, 0.5, "square", 1.0]]
++		"acid":     notes = [[160.0, 0.7, 0.5, "noise", 0.6]]
++		"alarm":    notes = [[760.0, 0.18, 0.5, "square", 1.0], [520.0, 0.18, 0.5, "square", 1.0]]
++		"eliminate": notes = [[440.0, 0.7, 0.6, "saw", 0.25]]
++		"gameover": notes = [[392.0, 0.2, 0.5, "sine", 1.0], [330.0, 0.2, 0.5, "sine", 1.0], [262.0, 0.5, 0.5, "sine", 1.0]]
++		_: return null
++	var wav := _synth(notes)
++	_cache[effect] = wav
++	return wav
++
++
++## notes: [[frequency, seconds, volume, wave, end_frequency_factor]]
++func _synth(notes: Array) -> AudioStreamWAV:
++	var samples := PackedFloat32Array()
++	var rng := RandomNumberGenerator.new()
++	rng.seed = 7
++	for note in notes:
++		var freq: float = note[0]
++		var length := int(float(note[1]) * RATE)
++		var vol: float = note[2]
++		var wave: String = note[3]
++		var end_factor: float = note[4]
++		var phase := 0.0
++		for i in length:
++			var t := float(i) / float(length)
++			var f := freq * lerpf(1.0, end_factor, t)
++			phase = fmod(phase + f / RATE, 1.0)
++			var v := 0.0
++			match wave:
++				"square": v = 1.0 if phase < 0.5 else -1.0
++				"saw": v = 2.0 * phase - 1.0
++				"noise": v = rng.randf_range(-1.0, 1.0) * 0.8 + sin(phase * TAU) * 0.2
++				_: v = sin(phase * TAU)
++			var env := minf(1.0, float(i) / 120.0) * pow(1.0 - t, 0.8)
++			samples.append(v * vol * env * 0.6)
++	var bytes := PackedByteArray()
++	bytes.resize(samples.size() * 2)
++	for i in samples.size():
++		bytes.encode_s16(i * 2, int(clampf(samples[i], -1.0, 1.0) * 32000.0))
++	var wav := AudioStreamWAV.new()
++	wav.format = AudioStreamWAV.FORMAT_16_BITS
++	wav.mix_rate = RATE
++	wav.stereo = false
++	wav.data = bytes
++	return wav
+diff --git a/Levels/Balance Scale/auction_chamber.tscn b/Levels/Balance Scale/auction_chamber.tscn
+index 65c1df3..c4d3094 100644
+--- a/Levels/Balance Scale/auction_chamber.tscn	
++++ b/Levels/Balance Scale/auction_chamber.tscn	
+@@ -8,6 +8,7 @@
+ [ext_resource type="PackedScene" path="res://Player/player.tscn" id="6_player"]
+ [ext_resource type="Script" path="res://Gameplay/BalanceScale/seat.gd" id="seat_script"]
+ [ext_resource type="Script" path="res://Gameplay/BalanceScale/seating_controller.gd" id="seating_script"]
++[ext_resource type="Script" path="res://Gameplay/BalanceScale/auction_presenter.gd" id="presenter_script"]
+ [ext_resource type="PackedScene" path="res://ui/hud/game_hud.tscn" id="hud_scene"]
+ [ext_resource type="PackedScene" path="res://assets/the_exit_room/props/prop_camera_wall.glb" id="p_cam"]
+ [ext_resource type="PackedScene" path="res://assets/the_exit_room/props/prop_speaker_wall.glb" id="p_spk"]
+@@ -54,7 +55,7 @@ environment = SubResource("Environment_main")
+ [node name="AuctionTable" parent="." unique_id=832718723 instance=ExtResource("2_table")]
+ 
+ [node name="RoundDisplay" parent="." unique_id=255156777 instance=ExtResource("5_display")]
+-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.6, -4.8)
++transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.95, -4.8)
+ 
+ [node name="Seats" type="Node3D" parent="." unique_id=1316376519]
+ 
+@@ -415,12 +416,23 @@ face_camera_direction = false
+ layer = 10
+ 
+ [node name="GameHUD" parent="UI" instance=ExtResource("hud_scene")]
+-show_round_info = false
++show_round_info = true
+ show_player_list = false
+-show_local_panel = false
++show_local_panel = true
+ allow_transfers = false
++starting_points = 100
+ 
+ [node name="Seating" type="Node" parent="." node_paths=PackedStringArray("hud", "seats_root")]
+ script = ExtResource("seating_script")
+ hud = NodePath("../UI/GameHUD")
+ seats_root = NodePath("../Seats")
++
++[node name="Presenter" type="Node" parent="." node_paths=PackedStringArray("seating", "hud", "seats_root", "pots_root", "table", "round_display", "lights_root")]
++script = ExtResource("presenter_script")
++seating = NodePath("../Seating")
++hud = NodePath("../UI/GameHUD")
++seats_root = NodePath("../Seats")
++pots_root = NodePath("../AcidPots")
++table = NodePath("../AuctionTable")
++round_display = NodePath("../RoundDisplay")
++lights_root = NodePath("../Lighting")
+diff --git a/assets/balance_scale/acid_pot.gd b/assets/balance_scale/acid_pot.gd
+index 373ba7b..211ebaf 100644
+--- a/assets/balance_scale/acid_pot.gd
++++ b/assets/balance_scale/acid_pot.gd
+@@ -73,6 +73,15 @@ func _apply() -> void:
+ 	_fx_overflow.emitting = fill > 1.0 and not _draining
+ 
+ 
++## 0 safe (green), 1 warning, 2 high, 3 critical or worse (red, fast pulse).
++func set_danger(level: int) -> void:
++	var colors := [Color(0.72, 0.95, 0.22, 0.85), Color(0.95, 0.85, 0.2, 0.85), Color(1.0, 0.5, 0.12, 0.88), Color(1.0, 0.16, 0.1, 0.9)]
++	var speeds := [2.0, 3.0, 5.0, 8.0]
++	var i := clampi(level, 0, 3)
++	_acid_mat.set_shader_parameter("acid_color", colors[i])
++	_acid_mat.set_shader_parameter("pulse_speed", speeds[i])
++
++
+ ## Animate the liquid to a target fill. Values above 1.0 spill over the rim.
+ func pour_to(target: float, duration: float = 1.5) -> void:
+ 	_kill_tween()
+diff --git a/tests/auction_level_test.gd b/tests/auction_level_test.gd
+new file mode 100644
+index 0000000..2fb9126
+--- /dev/null
++++ b/tests/auction_level_test.gd
+@@ -0,0 +1,101 @@
++extends SceneTree
++## The whole level, played by the test: sit down, bots join, bid with the keyboard, play until
++## somebody wins. Uses short timings so it finishes in a few seconds.
++## Run with: godot --headless --path . --script res://tests/auction_level_test.gd
++
++var passed := 0
++var failed := 0
++
++
++func _init() -> void:
++	call_deferred("_run")
++
++
++func _key(keycode: Key) -> void:
++	for pressed in [true, false]:
++		var e := InputEventKey.new()
++		e.keycode = keycode
++		e.physical_keycode = keycode
++		e.pressed = pressed
++		Input.parse_input_event(e)
++
++
++func _run() -> void:
++	var level := (load("res://Levels/Balance Scale/auction_chamber.tscn") as PackedScene).instantiate()
++	var presenter := level.get_node("Presenter") as AuctionPresenter
++	var cfg := BalanceScaleConfig.new()
++	cfg.bid_seconds = 3.0
++	cfg.intro_seconds = 0.1
++	cfg.penalty_seconds = 0.1
++	cfg.reveal_seconds = 0.3
++	cfg.winner_seconds = 0.2
++	cfg.acid_seconds = 0.3
++	cfg.elimination_seconds = 0.2
++	cfg.next_round_seconds = 0.1
++	presenter.config = cfg
++	root.add_child(level)
++	var player := level.get_node("Player")
++	var seating := level.get_node("Seating") as SeatingController
++	for i in 30:
++		await physics_frame
++
++	_check(presenter.auction == null, "nothing starts before the player sits")
++	Input.action_press("interact")
++	await physics_frame
++	await physics_frame
++	Input.action_release("interact")
++	for i in 10:
++		await physics_frame
++	var auction := presenter.auction
++	_check(player.seated and auction != null, "sitting down starts the match")
++	_check(auction.players.size() == 4, "three bots take the other chairs")
++	_check(presenter._avatars.size() == 3 and presenter._avatars.values().all(func(a): return a.visible), "three seated bot characters are in the room")
++	var seats_taken := 0
++	for seat in seating.seats:
++		if not seat.is_free():
++			seats_taken += 1
++	_check(seats_taken == 4, "all four chairs are occupied")
++	_check(auction.state != AuctionMatch.S.SEATING, "the first round has begun")
++
++	# --- play the whole game with the keyboard ---
++	var human_bids := 0
++	var saw_panel := false
++	var saw_wall_text := false
++	var elapsed := 0.0
++	while not auction.is_over() and elapsed < 120.0:
++		await physics_frame
++		elapsed += 1.0 / 60.0
++		var panel := presenter._bid_panel
++		if panel.is_open() and not panel.locked:
++			saw_panel = true
++			_key(KEY_6)
++			_key(KEY_ENTER)
++			await physics_frame
++			if panel.locked:
++				human_bids += 1
++	_check(saw_panel, "the bid panel opens during bidding")
++	_check(human_bids >= 1, "the human can lock in a bid with the keyboard (%d bids)" % human_bids)
++	_check(auction.is_over(), "the match reaches GAME OVER (%.0f s, round %d)" % [elapsed, auction.round_number()])
++	_check(auction.game.active_player_ids().size() == 1, "exactly one player survives")
++	_check(not presenter._bid_panel.is_open(), "the bid panel is closed at the end")
++	await create_timer(1.2).timeout
++	var released := 0
++	for i in presenter._pots.size():
++		if presenter._pots[i] != null and not is_equal_approx(presenter._pots[i]._hatch_rest_z, presenter._pots[i].hatch.rotation.z):
++			released += 1
++	_check(released == 3, "every eliminated player's pot was released (%d of 3)" % released)
++	_check(seating.state == SeatingController.State.GAME_OVER, "the seating lock is lifted when the game ends")
++	level.queue_free()
++	print("\n%d passed, %d failed" % [passed, failed])
++	quit(1 if failed > 0 else 0)
++
++
++func _check(condition: bool, label: String) -> void:
++	if label == "":
++		return
++	if condition:
++		passed += 1
++		print("  PASS  ", label)
++	else:
++		failed += 1
++		print("  FAIL  ", label)
+diff --git a/tests/auction_match_test.gd b/tests/auction_match_test.gd
+new file mode 100644
+index 0000000..2e9be61
+--- /dev/null
++++ b/tests/auction_match_test.gd
+@@ -0,0 +1,210 @@
++extends SceneTree
++## Match flow, bid validation, secrecy and disconnects (no scene needed, fake clock).
++## Run with: godot --headless --path . --script res://tests/auction_match_test.gd
++
++var passed := 0
++var failed := 0
++
++
++func _init() -> void:
++	_test_flow_and_states()
++	_test_bid_validation()
++	_test_secrecy()
++	_test_timeout_means_zero()
++	_test_all_bots_finish_a_game()
++	_test_disconnects()
++	_test_one_resolution_per_round()
++	print("\n%d passed, %d failed" % [passed, failed])
++	quit(1 if failed > 0 else 0)
++
++
++func _new_match(bot_count := 3, seed_value := 1) -> AuctionMatch:
++	var m := AuctionMatch.new()
++	m.use_process = false
++	m.rng.seed = seed_value
++	var list: Array[Dictionary] = [{"id": 1, "name": "YOU", "is_bot": false, "seat": 0, "personality": ""}]
++	var names := ["MIRA", "JONAS", "ILSE"]
++	for i in bot_count:
++		list.append({"id": 2 + i, "name": names[i], "is_bot": true, "seat": 1 + i, "personality": BotBidder.PERSONALITIES[i]})
++	_check(m.setup(list), "match setup succeeds with %d players" % list.size())
++	return m
++
++
++func _run_until(m: AuctionMatch, target: int, limit := 4000) -> bool:
++	for i in limit:
++		if m.state == target:
++			return true
++		m.advance(0.1)
++	return m.state == target
++
++
++func _test_flow_and_states() -> void:
++	_title("state flow")
++	var m := _new_match()
++	_check(m.state == AuctionMatch.S.SEATING, "starts in the seating state")
++	m.advance(100.0)
++	_check(m.state == AuctionMatch.S.SEATING, "time does not move the match while players are still seating")
++	var visited := {}
++	m.state_changed.connect(func(s: int, _r: int) -> void: visited[s] = true)
++	m.start_rounds()
++	_check(m.state == AuctionMatch.S.ROUND_INTRO and m.round_number() == 1, "all seated -> round 1 introduction")
++	_check(_run_until(m, AuctionMatch.S.BIDDING), "intro and penalty announcement lead to bidding")
++	_check(is_equal_approx(m.time_total, 20.0), "bidding lasts 20 seconds")
++	_check(m.submit_bid(1, 10), "the human submits a bid")
++	_check(m.state == AuctionMatch.S.WAITING_FOR_SUBMISSIONS, "after the humans lock in the match waits for the bots")
++	_check(_run_until(m, AuctionMatch.S.BID_REVEAL), "when everyone has locked in the bids are revealed")
++	for s in [AuctionMatch.S.WINNER_ANNOUNCE, AuctionMatch.S.ACID_APPLY]:
++		_check(_run_until(m, s), "reaches %s" % AuctionMatch.STATE_LABELS[s])
++	_run_until(m, AuctionMatch.S.NEXT_ROUND_PREP, 800)
++	_check(m.state == AuctionMatch.S.NEXT_ROUND_PREP or m.state == AuctionMatch.S.ELIMINATION_CHECK or m.is_over(), "after the acid either eliminations or the next round follow")
++	m.free()
++
++
++func _test_bid_validation() -> void:
++	_title("bid validation")
++	var m := _new_match()
++	_check(not m.submit_bid(1, 5), "no bids before bidding opens")
++	m.start_rounds()
++	_run_until(m, AuctionMatch.S.BIDDING)
++	_check(not m.submit_bid(1, 101), "a bid above the player's points is rejected")
++	_check(not m.submit_bid(1, -1), "a negative bid is rejected")
++	_check(not m.submit_bid(1, 5.5), "a non-integer bid is rejected")
++	_check(not m.submit_bid(1, "50"), "a text bid is rejected")
++	_check(not m.submit_bid(99, 5), "a stranger cannot bid")
++	_check(m.submit_bid(1, 30), "a valid bid is accepted")
++	_check(not m.submit_bid(1, 50), "a second bid in the same round is rejected")
++	_check(not m.submit_bid(1, 0), "a locked bid can never be changed")
++	m.free()
++
++
++func _test_secrecy() -> void:
++	_title("secrecy")
++	var m := _new_match()
++	m.start_rounds()
++	_run_until(m, AuctionMatch.S.BIDDING)
++	m.submit_bid(1, 42)
++	m.advance(8.0)
++	var view := m.public_view()
++	_check(not _contains_key(view, "bids") and not _contains_key(view, "points") and not _contains_key(view, "bid"), "the public view has no bids and no points")
++	_check(not str(view).contains("42"), "the human's secret bid value does not appear anywhere in the public view")
++	var locked := 0
++	for p in view["players"]:
++		if p["locked"]:
++			locked += 1
++	_check(locked >= 1, "who has locked in IS public")
++	_check(m.private_view(1)["points"] == 100 and m.private_view(1)["bid_locked"], "a player can read their own points")
++	_check(m.private_view(2)["points"] == 100, "(host-side) private view exists per player")
++	var revealed := [false]
++	m.round_revealed.connect(func(r: Dictionary) -> void: revealed[0] = r["bids"].has(1) and r["bids"][1] == 42)
++	_run_until(m, AuctionMatch.S.BID_REVEAL)
++	_check(revealed[0], "bids appear only in the reveal")
++	m.free()
++
++
++func _test_timeout_means_zero() -> void:
++	_title("deadline")
++	var m := _new_match()
++	m.start_rounds()
++	_run_until(m, AuctionMatch.S.BIDDING)
++	var autos := []
++	m.bid_locked.connect(func(id: int, auto: bool) -> void: if auto: autos.append(id))
++	var result := [{}]
++	m.round_revealed.connect(func(r: Dictionary) -> void: result[0] = r)
++	for i in 400:
++		m.advance(0.1)
++		if m.state == AuctionMatch.S.BID_REVEAL:
++			break
++	_check(1 in autos, "a player who does not submit is locked in automatically")
++	_check(result[0].get("bids", {}).get(1, -1) == 0, "the automatic bid is 0")
++	m.free()
++
++
++func _test_all_bots_finish_a_game() -> void:
++	_title("a whole match")
++	for seed_value in [1, 2, 3, 4, 5]:
++		var m := _new_match(3, seed_value)
++		m.start_rounds()
++		var rounds := [0]
++		var winner := [-9]
++		m.game_finished.connect(func(w: int) -> void: winner[0] = w)
++		var humans_bid := true
++		for i in 60000:
++			if m.state == AuctionMatch.S.BIDDING and humans_bid and not m.private_view(1).get("bid_locked", true):
++				m.submit_bid(1, int(m.private_view(1)["points"] * 0.2))
++			if m.is_over():
++				break
++			m.advance(0.1)
++		_check(m.is_over() and winner[0] > 0, "seed %d: the match ends with a winner (round %d)" % [seed_value, m.round_number()])
++		_check(m.game.active_player_ids().size() == 1, "seed %d: exactly one player is left alive" % seed_value)
++		m.free()
++
++
++func _test_disconnects() -> void:
++	_title("disconnects")
++	# after submitting
++	var m := _new_match()
++	m.start_rounds()
++	_run_until(m, AuctionMatch.S.BIDDING)
++	m.submit_bid(1, 90)
++	var gone := []
++	m.player_eliminated.connect(func(id: int, reason: String) -> void: gone.append([id, reason]))
++	m.player_disconnected(1)
++	_check(gone == [[1, "disconnected"]], "a leaving player is eliminated as DISCONNECTED")
++	_run_until(m, AuctionMatch.S.BID_REVEAL)
++	_check(not m.last_result["bids"].has(1), "the bid of a player who left is discarded, even after submitting")
++	_check(m.last_result["bids"].size() == 3, "the round resolves among the players who stayed")
++	m.free()
++	# everyone else leaves
++	var m2 := _new_match(1)
++	m2.start_rounds()
++	_run_until(m2, AuctionMatch.S.BIDDING)
++	var finished := [-9]
++	m2.game_finished.connect(func(w: int) -> void: finished[0] = w)
++	m2.player_disconnected(2)
++	_check(m2.is_over() and finished[0] == 1, "when only one player is left the match ends at once")
++	m2.free()
++	# leaving during seating phase is harmless
++	var m3 := _new_match(2)
++	m3.player_disconnected(3)
++	_check(m3.state == AuctionMatch.S.SEATING and m3.game.eliminated[3], "a player can leave before the match starts")
++	m3.free()
++
++
++func _test_one_resolution_per_round() -> void:
++	_title("no double resolution")
++	var m := _new_match()
++	m.start_rounds()
++	_run_until(m, AuctionMatch.S.BIDDING)
++	var resolutions := [0]
++	m.game.round_resolved.connect(func(_r: Dictionary) -> void: resolutions[0] += 1)
++	for id in [1, 2, 3, 4]:
++		m.submit_bid(id, 0)
++	m._resolve_and_reveal()
++	m._resolve_and_reveal()
++	_check(resolutions[0] == 1 and m.game.round_number == 2, "a round is resolved exactly once")
++	m.free()
++
++
++func _contains_key(value: Variant, key: String) -> bool:
++	if value is Dictionary:
++		for k in value:
++			if str(k) == key or _contains_key(value[k], key):
++				return true
++	elif value is Array:
++		for v in value:
++			if _contains_key(v, key):
++				return true
++	return false
++
++
++func _check(condition: bool, label: String) -> void:
++	if condition:
++		passed += 1
++		print("  PASS  ", label)
++	else:
++		failed += 1
++		print("  FAIL  ", label)
++
++
++func _title(value: String) -> void:
++	print("\n== ", value)
+diff --git a/tests/balance_scale_test.gd b/tests/balance_scale_test.gd
+index 9d21ad2..d1f8ddd 100644
+--- a/tests/balance_scale_test.gd
++++ b/tests/balance_scale_test.gd
+@@ -8,13 +8,19 @@ var failed := 0
+ 
+ func _init() -> void:
+ 	_test_unique_highest_bid()
+-	_test_tie_changes_nothing()
+ 	_test_invalid_bids_are_rejected()
++	_test_extra_bids_from_dead_players_are_ignored()
+ 	_test_zero_points_survive()
+-	_test_negative_points_eliminate()
+-	_test_full_pot_eliminates()
++	_test_negative_points_eliminate_without_faking_acid()
++	_test_acid_capacity_is_strict()
+ 	_test_last_player_wins()
+-	_test_public_snapshots_hide_points()
++	_test_penalty_schedule()
++	_test_standoff()
++	_test_last_stand_rule()
++	_test_forfeit()
++	_test_acid_drain_option()
++	_test_reveal_and_privacy()
++	_test_everybody_bids_zero_always_terminates()
+ 	print("\n%d passed, %d failed" % [passed, failed])
+ 	quit(1 if failed > 0 else 0)
+ 
+@@ -23,22 +29,12 @@ func _test_unique_highest_bid() -> void:
+ 	_title("unique highest bid")
+ 	var game := _new_game([1, 2, 3], 100, 100)
+ 	var result := game.resolve_round({1: 40, 2: 30, 3: 5}, 20)
+-	_check(result["ok"], "valid bids resolve")
+-	_check(result["winner_id"] == 1 and game.points[1] == 60, "winner pays their own bid")
+-	_check(game.points[2] == 80 and game.points[3] == 80, "losers pay the announced point penalty")
++	_check(result["ok"] and not result["standoff"], "valid bids resolve")
++	_check(result["winner_id"] == 1 and game.points[1] == 60, "winner pays their own bid and takes no penalty")
++	_check(game.points[2] == 80 and game.points[3] == 80, "losers pay the round penalty")
+ 	_check(game.acid[2] == 10 and game.acid[3] == 35, "loser acid equals winning bid minus their bid")
+-
+-
+-func _test_tie_changes_nothing() -> void:
+-	_title("tie for highest bid")
+-	var game := _new_game([1, 2, 3], 100, 100)
+-	game.acid[3] = 12
+-	var result := game.resolve_round({1: 50, 2: 50, 3: 10}, 20)
+-	_check(result["ok"] and result["tie"], "equal highest bids produce a tie")
+-	_check(result["winner_id"] == -1, "nobody wins a tied round")
+-	_check(game.points[1] == 100 and game.points[2] == 100 and game.points[3] == 100, "no points change on a tie")
+-	_check(game.acid[1] == 0 and game.acid[2] == 0 and game.acid[3] == 12, "no acid is added on a tie")
+-	_check(game.round_number == 2 and game.state == BalanceScaleGame.State.RUNNING, "the next round can begin")
++	_check(game.acid[1] == 0, "the winner gets no acid")
++	_check(result["deltas"][3] == {"points": -20, "acid": 35}, "the result lists each player's change")
+ 
+ 
+ func _test_invalid_bids_are_rejected() -> void:
+@@ -46,60 +42,161 @@ func _test_invalid_bids_are_rejected() -> void:
+ 	var game := _new_game([1, 2], 50, 100)
+ 	var result := game.resolve_round({1: 51, 2: 10}, 5)
+ 	_check(not result["ok"], "a bid above the player's points is rejected")
+-	_check(game.round_number == 1 and game.points[1] == 50, "rejected bids do not mutate the game")
+-	result = game.resolve_round({1: 10}, 5)
+-	_check(not result["ok"], "a missing player's bid is rejected")
++	_check(game.round_number == 1 and game.points[1] == 50, "rejected bids do not change the game")
++	_check(not game.resolve_round({1: 10}, 5)["ok"], "a missing bid is rejected")
++	_check(not game.resolve_round({1: 10, 2: -1}, 5)["ok"], "a negative bid is rejected")
++	_check(not game.resolve_round({1: 10, 2: 5.0}, 5)["ok"], "a non-integer bid is rejected")
++
++
++func _test_extra_bids_from_dead_players_are_ignored() -> void:
++	_title("bids from eliminated players")
++	var game := _new_game([1, 2, 3], 10, 100)
++	game.forfeit(3)
++	var result := game.resolve_round({1: 5, 2: 1, 3: 9}, 1)
++	_check(result["ok"] and result["winner_id"] == 1, "an extra bid from an eliminated player is ignored")
++	_check(not result["bids"].has(3), "the result does not list the eliminated player's bid")
+ 
+ 
+ func _test_zero_points_survive() -> void:
+ 	_title("exactly zero points")
+ 	var game := _new_game([1, 2], 10, 100)
+ 	game.resolve_round({1: 5, 2: 0}, 10)
+-	_check(game.points[2] == 0 and not game.eliminated[2], "a player with exactly zero points is still alive")
++	_check(game.points[2] == 0 and not game.eliminated[2], "a player with exactly zero points is alive")
+ 
+ 
+-func _test_negative_points_eliminate() -> void:
++func _test_negative_points_eliminate_without_faking_acid() -> void:
+ 	_title("negative points")
+-	var game := _new_game([1, 2], 10, 100)
+-	var result := game.resolve_round({1: 5, 2: 0}, 11)
+-	_check(result["winner_id"] == 1, "the highest bidder still wins")
++	var game := _new_game([1, 2, 3], 10, 100)
++	var result := game.resolve_round({1: 5, 2: 3, 3: 0}, 11)
+ 	_check(game.points[2] == -1 and game.eliminated[2], "points below zero eliminate the player")
+-	_check(game.acid[2] == 100, "negative points fill the pot to capacity")
+-	_check(game.points[1] == 5 and not game.eliminated[1], "the winner remains alive")
++	_check(result["eliminations"][0]["reason"] == BalanceScaleGame.REASON_POINTS, "the reason is reported")
++	_check(game.acid[2] == 2, "the acid number stays true (not forced to capacity)")
++	_check(not game.eliminated[1], "the winner remains alive")
+ 
+ 
+-func _test_full_pot_eliminates() -> void:
+-	_title("acid pot capacity")
++func _test_acid_capacity_is_strict() -> void:
++	_title("acid capacity")
+ 	var game := _new_game([1, 2], 100, 70)
+ 	game.resolve_round({1: 50, 2: 0}, 0)
+-	_check(game.acid[2] == 50 and not game.eliminated[2], "partial acid remains in the pot")
+-	var result := game.resolve_round({1: 30, 2: 0}, 0)
+-	_check(game.acid[2] == 70 and game.eliminated[2], "reaching capacity releases the pot and eliminates the player")
+-	_check(result["eliminated"] == [2], "the result reports the eliminated player")
++	_check(game.acid[2] == 50 and not game.eliminated[2], "partial acid stays in the pot")
++	game.resolve_round({1: 20, 2: 0}, 0)
++	_check(game.acid[2] == 70 and not game.eliminated[2], "exactly full is NOT an elimination")
++	var result := game.resolve_round({1: 1, 2: 0}, 0)
++	_check(game.acid[2] == 71 and game.eliminated[2], "one drop over capacity eliminates")
++	_check(result["eliminations"][0]["reason"] == BalanceScaleGame.REASON_ACID, "the reason is acid overflow")
+ 
+ 
+ func _test_last_player_wins() -> void:
+ 	_title("last survivor")
+ 	var game := _new_game([1, 2], 10, 100)
++	var ended := [-2]
++	game.game_ended.connect(func(w: int) -> void: ended[0] = w)
+ 	var result := game.resolve_round({1: 5, 2: 0}, 11)
+ 	_check(result["game_over"] and result["game_winner_id"] == 1, "the last surviving player wins")
+-	_check(game.state == BalanceScaleGame.State.ENDED and game.winner_id == 1, "the game enters the ended state")
++	_check(game.state == BalanceScaleGame.State.ENDED and ended[0] == 1, "the game ends and announces the winner")
++	_check(not game.resolve_round({1: 0, 2: 0}, 1)["ok"], "no more rounds after the game ended")
++
+ 
++func _test_penalty_schedule() -> void:
++	_title("penalty schedule")
++	var cfg := BalanceScaleConfig.new()
++	_check(cfg.penalty_for_round(1) == 10 and cfg.penalty_for_round(2) == 13 and cfg.penalty_for_round(5) == 22, "10 +3 per round by default")
++	cfg.penalty_start = 20
++	cfg.penalty_step = 5
++	_check(cfg.penalty_for_round(1) == 20 and cfg.penalty_for_round(3) == 30, "the original 20 +5 schedule is one config change away")
++	var game := BalanceScaleGame.new()
++	game.setup_with_config([1, 2] as Array[int], cfg)
++	_check(game.current_penalty() == 20, "the game uses the configured penalty")
++	game.resolve_round({1: 5, 2: 0})
++	_check(game.current_penalty() == 25, "the penalty grows after every round")
++
++
++func _test_standoff() -> void:
++	_title("standoff (tie for the highest bid)")
++	var game := _new_game([1, 2, 3], 100, 100)
++	game.acid[3] = 12
++	var result := game.resolve_round({1: 50, 2: 50, 3: 10}, 20)
++	_check(result["ok"] and result["standoff"] and result["winner_id"] == -1, "equal highest bids are a standoff with no winner")
++	_check(game.points[1] == 80 and game.points[2] == 80 and game.points[3] == 80, "EVERY living player pays the penalty, nobody pays a bid")
++	_check(game.acid[1] == 0 and game.acid[2] == 0 and game.acid[3] == 12, "no acid is added in a standoff")
++	_check(game.round_number == 2 and not result["game_over"], "the round counts and the game continues")
++
++
++func _test_last_stand_rule() -> void:
++	_title("last-stand rule")
++	var game := _new_game([1, 2, 3], 10, 100)
++	game.points[1] = 4
++	game.points[2] = 7
++	game.points[3] = 7
++	game.acid[2] = 20
++	game.acid[3] = 5
++	var result := game.resolve_round({1: 0, 2: 0, 3: 0}, 50)
++	_check(result["standoff"], "everybody bidding the same is a standoff")
++	_check(result["last_stand_id"] == 3, "the survivor has the most points, then the least acid")
++	_check(not game.eliminated[3] and game.eliminated[1] and game.eliminated[2], "everyone else is eliminated")
++	_check(game.points[3] == 0, "the survivor's points are clamped to zero")
++	_check(result["game_over"] and result["game_winner_id"] == 3, "the survivor wins the game")
++
++	var game2 := _new_game([1, 2], 10, 100)
++	game2.rng.seed = 1
++	var r2 := game2.resolve_round({1: 0, 2: 0}, 50)
++	_check(r2["last_stand_id"] in [1, 2] and r2["game_over"], "a full tie falls back to a coin flip and still ends the game")
++	var wins := {1: 0, 2: 0}
++	for seed_value in 60:
++		var g := _new_game([1, 2], 10, 100)
++		g.rng.seed = seed_value
++		wins[g.resolve_round({1: 0, 2: 0}, 50)["last_stand_id"]] += 1
++	_check(wins[1] > 10 and wins[2] > 10, "the coin flip is not biased towards one seat")
++
++
++func _test_forfeit() -> void:
++	_title("disconnect / forfeit")
++	var game := _new_game([1, 2, 3], 100, 100)
++	var result := game.forfeit(2)
++	_check(result["ok"] and game.eliminated[2] and not result["game_over"], "a leaving player is eliminated")
++	_check(game.active_player_ids() == [1, 3], "the others continue")
++	_check(not game.forfeit(2)["ok"], "a player cannot forfeit twice")
++	result = game.forfeit(3)
++	_check(result["game_over"] and result["game_winner_id"] == 1 and game.state == BalanceScaleGame.State.ENDED, "the last player standing wins when everyone else leaves")
++
++
++func _test_acid_drain_option() -> void:
++	_title("acid drain knob")
++	var cfg := BalanceScaleConfig.new()
++	cfg.acid_drain_per_round = 10
++	var game := BalanceScaleGame.new()
++	game.setup_with_config([1, 2, 3] as Array[int], cfg)
++	game.resolve_round({1: 40, 2: 0, 3: 0}, 0)
++	_check(game.acid[2] == 30 and game.acid[1] == 0, "living pots drain by the configured amount after the round")
+ 
+ 
+-func _test_public_snapshots_hide_points() -> void:
+-	_title("private player points")
++func _test_reveal_and_privacy() -> void:
++	_title("reveal and privacy")
+ 	var game := _new_game([1, 2], 25, 100)
+ 	var public_state := game.snapshot()
+ 	_check(not public_state["players"][1].has("points"), "public snapshot hides player points")
+ 	var result := game.resolve_round({1: 10, 2: 5}, 0)
+-	_check(not result["players"][1].has("points"), "round result hides player points")
+-	_check(not result.has("winning_bid"), "round result hides the winning bid")
++	_check(not result["players"][1].has("points"), "round result never lists anyone's point total")
++	_check(result["bids"] == {1: 10, 2: 5} and result["winning_bid"] == 10, "the result reveals every bid")
+ 	_check(game.private_snapshot(1)["points"] == 15, "a player can retrieve their own points")
+ 	_check(game.private_snapshot(2)["points"] == 25, "private snapshots are scoped to one player")
+ 	_check(game.private_snapshot(99).is_empty(), "unknown players receive no private state")
+ 
+ 
++func _test_everybody_bids_zero_always_terminates() -> void:
++	_title("stalling cannot last forever")
++	var game := _new_game([1, 2, 3, 4], 100, 100)
++	var rounds := 0
++	while game.state == BalanceScaleGame.State.RUNNING and rounds < 100:
++		var bids := {}
++		for id in game.active_player_ids():
++			bids[id] = 0
++		game.resolve_round(bids)
++		rounds += 1
++	_check(game.state == BalanceScaleGame.State.ENDED and rounds < 12, "all-zero collusion ends the game in %d rounds with one survivor" % rounds)
++	_check(game.winner_id != -1, "the game always produces a winner")
++
++
+ func _new_game(ids: Array[int], points: int, capacity: int) -> BalanceScaleGame:
+ 	var game := BalanceScaleGame.new()
+ 	_check(game.setup(ids, points, capacity), "game setup succeeds")

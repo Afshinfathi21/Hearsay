@@ -127,15 +127,21 @@ def save(scene, filename):
 
 
 # ================================================================ CHAMBER
-# Origin: centre of the floor, floor top at y=0. Interior 10 x 10 x 4.5 m.
+# Origin: centre of the floor, floor top at y=0. Interior 10 x 10 x ROOM_H m.
+# ROOM_H is the interior height. Everything that hangs from the ceiling moves up with it
+# (the acid pots in the level scene must move up by the same amount: POT_Y = 2.2 + (ROOM_H - 4.5)).
+ROOM_H = 5.1
+DH = ROOM_H - 4.5          # how much taller than the original 4.5 m room
+
+
 def build_chamber():
     s = trimesh.Scene()
     part(s, "Floor", box((10.8, 0.2, 10.8), (0, -0.1, 0)), M_CONCRETE_DK)
     walls = [
-        box((10.8, 4.5, 0.4), (0, 2.25, -5.2)),
-        box((10.8, 4.5, 0.4), (0, 2.25, 5.2)),
-        box((0.4, 4.5, 10.0), (5.2, 2.25, 0)),
-        box((0.4, 4.5, 10.0), (-5.2, 2.25, 0)),
+        box((10.8, ROOM_H, 0.4), (0, ROOM_H / 2, -5.2)),
+        box((10.8, ROOM_H, 0.4), (0, ROOM_H / 2, 5.2)),
+        box((0.4, ROOM_H, 10.0), (5.2, ROOM_H / 2, 0)),
+        box((0.4, ROOM_H, 10.0), (-5.2, ROOM_H / 2, 0)),
     ]
     part(s, "Walls", walls, M_CONCRETE)
     wain = [
@@ -145,39 +151,39 @@ def build_chamber():
         box((0.04, 1.0, 9.4), (-4.98, 0.5, 0)),
     ]
     part(s, "WallPanels", wain, M_METAL)
-    cols = [box((0.6, 4.5, 0.6), (sx * 4.7, 2.25, sz * 4.7)) for sx in (-1, 1) for sz in (-1, 1)]
+    cols = [box((0.6, ROOM_H, 0.6), (sx * 4.7, ROOM_H / 2, sz * 4.7)) for sx in (-1, 1) for sz in (-1, 1)]
     part(s, "Columns", cols, M_CONCRETE_DK)
-    ceil = [box((10.8, 0.2, 10.8), (0, 4.6, 0))]
-    ceil += [box((0.3, 0.4, 10.0), (x, 4.3, 0)) for x in (-4, -2, 0, 2, 4)]
+    ceil = [box((10.8, 0.2, 10.8), (0, 4.6 + DH, 0))]
+    ceil += [box((0.3, 0.4, 10.0), (x, 4.3 + DH, 0)) for x in (-4, -2, 0, 2, 4)]
     part(s, "Ceiling", ceil, M_CONCRETE)
 
     # perimeter main pipe at y=4.1 (feed stubs from acid pots end at +-3.1)
-    h, r = 4.1, 0.12
+    h, r = 4.1 + DH, 0.12
     c = 3.1
     pts = [(-c, h, -c), (c, h, -c), (c, h, c), (-c, h, c)]
     pp = [tube(pts[i], pts[(i + 1) % 4], r) for i in range(4)] + [ball(r * 1.15, p) for p in pts]
     # wall-run conduits + corner risers
-    pp += [tube((-4.8, 3.6, -4.65), (4.8, 3.6, -4.65), 0.08), tube((-4.8, 3.6, 4.65), (4.8, 3.6, 4.65), 0.08),
-           tube((4.65, 3.4, -4.8), (4.65, 3.4, 4.8), 0.08), tube((-4.65, 3.4, -4.8), (-4.65, 3.4, 4.8), 0.08)]
-    pp += [tube((sx * 4.3, 0, sz * 4.3), (sx * 4.3, 4.5, sz * 4.3), 0.06) for sx in (-1, 1) for sz in (-1, 1)]
+    pp += [tube((-4.8, 3.6 + DH, -4.65), (4.8, 3.6 + DH, -4.65), 0.08), tube((-4.8, 3.6 + DH, 4.65), (4.8, 3.6 + DH, 4.65), 0.08),
+           tube((4.65, 3.4 + DH, -4.8), (4.65, 3.4 + DH, 4.8), 0.08), tube((-4.65, 3.4 + DH, -4.8), (-4.65, 3.4 + DH, 4.8), 0.08)]
+    pp += [tube((sx * 4.3, 0, sz * 4.3), (sx * 4.3, ROOM_H, sz * 4.3), 0.06) for sx in (-1, 1) for sz in (-1, 1)]
     part(s, "Pipes", pp, M_PIPE)
 
     # spotlight housings (add SpotLight3D nodes under these in Godot)
     pos = [(0, 0)] + [(sx * 1.2, sz * 1.2) for sx in (-1, 1) for sz in (-1, 1)]
     hous, lens = [], []
     for x, z in pos:
-        hous += [cyl(0.25, 0.3, (x, 4.1, z)), cyl(0.02, 0.3, (x, 4.35, z), sections=12)]
-        lens.append(cyl(0.2, 0.02, (x, 3.94, z)))
+        hous += [cyl(0.25, 0.3, (x, 4.1 + DH, z)), cyl(0.02, 0.3, (x, 4.35 + DH, z), sections=12)]
+        lens.append(cyl(0.2, 0.02, (x, 3.94 + DH, z)))
     part(s, "SpotHousings", hous, M_METAL)
     part(s, "SpotLenses", lens, M_LAMP)
 
     # red warning lights (add OmniLight3D, energy low, red)
-    cages = [box((0.2, 0.2, 0.2), (sx * 4.35, 3.7, sz * 4.35)) for sx in (-1, 1) for sz in (-1, 1)]
+    cages = [box((0.2, 0.2, 0.2), (sx * 4.35, 3.7 + DH, sz * 4.35)) for sx in (-1, 1) for sz in (-1, 1)]
     part(s, "WarningLights", cages, M_RED_EMIT)
 
     col(s, "Floor", [box((10.8, 0.2, 10.8), (0, -0.1, 0))])
     col(s, "Walls", walls)
-    col(s, "Ceiling", [box((10.8, 0.2, 10.8), (0, 4.6, 0))])
+    col(s, "Ceiling", [box((10.8, 0.2, 10.8), (0, 4.6 + DH, 0))])
     save(s, "auction_chamber.glb")
 
 

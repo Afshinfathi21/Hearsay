@@ -221,6 +221,11 @@ func t_random_phases() -> void:
 func t_level() -> void:
 	_title("level: pads, eye, lights, HUD, reward")
 	var level: Node = (load(LEVEL) as PackedScene).instantiate()
+	# The Exit Room level ships WITHOUT mini-games (minigame_fraction = 0). This stage switches them
+	# on again so the mini-game code itself stays tested.
+	for n in level.find_children("*", "Node3D", true, false):
+		if "minigame_fraction" in n:
+			n.minigame_fraction = 0.5
 	root.add_child(level)
 	current_scene = level
 	for i in 20:
